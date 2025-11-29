@@ -76,7 +76,7 @@ function Toolbar({
       <div className="h-6 w-px bg-gray-600" />
 
       {/* Export Button with Dropdown */}
-      {/* <div className="relative">
+      <div className="relative">
         <button
           onClick={() => setShowExportMenu(!showExportMenu)}
           disabled={isExporting}
@@ -133,7 +133,7 @@ function Toolbar({
             </button>
           </div>
         )}
-      </div> */}
+      </div>
     </div>
   );
 }

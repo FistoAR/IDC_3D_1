@@ -225,7 +225,7 @@ function Sidebar({
       )}
 
       {/* Export Section */}
-      {/*{model && (
+      {model && (
         <div className="p-5 border-b border-gray-700/50">
           <SectionHeader 
             title="Export Model" 
@@ -371,7 +371,7 @@ function Sidebar({
             </>
           )}
         </div>
-      )}*/}
+      )}
 
       {/* Transform Controls */}
       {model && (

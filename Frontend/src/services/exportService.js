@@ -3,8 +3,37 @@ import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter";
 
 /**
+ * Clone material preserving all PBR textures
+ */
+function cloneMaterialWithTextures(material) {
+  const cloned = material.clone();
+  
+  // Clone textures
+  const textureProps = [
+    'map', 'normalMap', 'roughnessMap', 'metalnessMap',
+    'aoMap', 'displacementMap', 'emissiveMap', 'alphaMap',
+    'envMap', 'lightMap', 'bumpMap'
+  ];
+  
+  textureProps.forEach(prop => {
+    if (material[prop]) {
+      cloned[prop] = material[prop].clone();
+      cloned[prop].needsUpdate = true;
+    }
+  });
+  
+  // Preserve other properties
+  if (material.normalScale) {
+    cloned.normalScale = material.normalScale.clone();
+  }
+  
+  cloned.needsUpdate = true;
+  return cloned;
+}
+
+/**
  * Clone object and bake all transformations into geometry
- * This ensures exported model includes all translate/rotate/scale changes
+ * Preserves PBR textures
  */
 function cloneWithBakedTransforms(object) {
   const clonedObject = new THREE.Group();
@@ -19,12 +48,12 @@ function cloneWithBakedTransforms(object) {
       child.updateWorldMatrix(true, false);
       clonedGeometry.applyMatrix4(child.matrixWorld);
       
-      // Clone material(s)
+      // Clone material(s) with textures
       let clonedMaterial;
       if (Array.isArray(child.material)) {
-        clonedMaterial = child.material.map(mat => mat.clone());
+        clonedMaterial = child.material.map(mat => cloneMaterialWithTextures(mat));
       } else {
-        clonedMaterial = child.material.clone();
+        clonedMaterial = cloneMaterialWithTextures(child.material);
       }
       
       // Create new mesh with baked transforms
@@ -45,24 +74,27 @@ function cloneWithBakedTransforms(object) {
 
 /**
  * Clone object preserving hierarchy and transforms (not baked)
- * Useful when you want to keep transform data separate
  */
 function clonePreservingTransforms(object) {
   const clone = object.clone(true);
   
-  // Ensure all matrices are updated
-  clone.updateMatrixWorld(true);
+  // Deep clone materials with textures
+  clone.traverse((child) => {
+    if (child.isMesh && child.material) {
+      if (Array.isArray(child.material)) {
+        child.material = child.material.map(mat => cloneMaterialWithTextures(mat));
+      } else {
+        child.material = cloneMaterialWithTextures(child.material);
+      }
+    }
+  });
   
+  clone.updateMatrixWorld(true);
   return clone;
 }
 
 /**
  * Export a Three.js scene/object to GLB format
- * @param {THREE.Object3D} object - The object to export
- * @param {string} filename - The filename for the download (without extension)
- * @param {Object} options - Export options
- * @param {boolean} options.bakeTransforms - Whether to bake transforms into geometry (default: true)
- * @returns {Promise<Blob>} - The GLB blob
  */
 export async function exportToGLB(object, filename = "model", options = {}) {
   return new Promise((resolve, reject) => {
@@ -70,7 +102,6 @@ export async function exportToGLB(object, filename = "model", options = {}) {
     
     const { bakeTransforms = true, ...exporterOptions } = options;
 
-    // Clone and optionally bake transforms
     const exportObject = bakeTransforms 
       ? cloneWithBakedTransforms(object)
       : clonePreservingTransforms(object);
@@ -79,6 +110,7 @@ export async function exportToGLB(object, filename = "model", options = {}) {
       binary: true,
       maxTextureSize: exporterOptions.maxTextureSize || 4096,
       includeCustomExtensions: exporterOptions.includeCustomExtensions || false,
+      embedImages: true,
       ...exporterOptions
     };
 
@@ -98,10 +130,7 @@ export async function exportToGLB(object, filename = "model", options = {}) {
 }
 
 /**
- * Export and download a Three.js scene/object as GLB
- * @param {THREE.Object3D} object - The object to export
- * @param {string} filename - The filename for the download (without extension)
- * @param {Object} options - Export options
+ * Export and download as GLB
  */
 export async function downloadAsGLB(object, filename = "model", options = {}) {
   try {
@@ -125,10 +154,7 @@ export async function downloadAsGLB(object, filename = "model", options = {}) {
 }
 
 /**
- * Export to GLTF (JSON format with separate files)
- * @param {THREE.Object3D} object - The object to export
- * @param {string} filename - The filename for the download
- * @param {Object} options - Export options
+ * Export to GLTF (JSON format)
  */
 export async function exportToGLTF(object, filename = "model", options = {}) {
   return new Promise((resolve, reject) => {
@@ -150,13 +176,13 @@ export async function exportToGLTF(object, filename = "model", options = {}) {
       (error) => {
         reject(new Error(`Export failed: ${error.message || error}`));
       },
-      { binary: false }
+      { binary: false, embedImages: true }
     );
   });
 }
 
 /**
- * Download as GLTF JSON format
+ * Download as GLTF
  */
 export async function downloadAsGLTF(object, filename = "model", options = {}) {
   try {
@@ -180,7 +206,7 @@ export async function downloadAsGLTF(object, filename = "model", options = {}) {
 }
 
 /**
- * Export to OBJ format with baked transforms
+ * Export to OBJ format
  */
 export async function downloadAsOBJ(object, filename = "model", options = {}) {
   return new Promise((resolve, reject) => {
@@ -188,12 +214,12 @@ export async function downloadAsOBJ(object, filename = "model", options = {}) {
       const { bakeTransforms = true } = options;
       
       let output = "# Exported from 3D CAD Viewer\n";
-      output += "# Transforms are baked into geometry\n\n";
+      output += "# PBR textures not supported in OBJ format\n\n";
       
       let vertexOffset = 1;
       let normalOffset = 1;
+      let uvOffset = 1;
 
-      // Use baked or original based on option
       const exportObject = bakeTransforms 
         ? cloneWithBakedTransforms(object)
         : object;
@@ -203,13 +229,13 @@ export async function downloadAsOBJ(object, filename = "model", options = {}) {
           const geometry = child.geometry;
           const position = geometry.attributes.position;
           const normal = geometry.attributes.normal;
+          const uv = geometry.attributes.uv;
 
           if (!position) return;
 
           output += `# Mesh: ${child.name || 'unnamed'}\n`;
           output += `g ${child.name || 'mesh'}\n`;
 
-          // Get world matrix for non-baked export
           const matrix = bakeTransforms ? new THREE.Matrix4() : child.matrixWorld;
           const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
           const tempVertex = new THREE.Vector3();
@@ -226,6 +252,13 @@ export async function downloadAsOBJ(object, filename = "model", options = {}) {
               tempVertex.applyMatrix4(matrix);
             }
             output += `v ${tempVertex.x.toFixed(6)} ${tempVertex.y.toFixed(6)} ${tempVertex.z.toFixed(6)}\n`;
+          }
+
+          // UVs
+          if (uv) {
+            for (let i = 0; i < uv.count; i++) {
+              output += `vt ${uv.getX(i).toFixed(6)} ${uv.getY(i).toFixed(6)}\n`;
+            }
           }
 
           // Normals
@@ -251,7 +284,15 @@ export async function downloadAsOBJ(object, filename = "model", options = {}) {
               const b = index.getX(i + 1) + vertexOffset;
               const c = index.getX(i + 2) + vertexOffset;
               
-              if (normal) {
+              if (normal && uv) {
+                const ua = index.getX(i) + uvOffset;
+                const ub = index.getX(i + 1) + uvOffset;
+                const uc = index.getX(i + 2) + uvOffset;
+                const na = index.getX(i) + normalOffset;
+                const nb = index.getX(i + 1) + normalOffset;
+                const nc = index.getX(i + 2) + normalOffset;
+                output += `f ${a}/${ua}/${na} ${b}/${ub}/${nb} ${c}/${uc}/${nc}\n`;
+              } else if (normal) {
                 output += `f ${a}//${a - vertexOffset + normalOffset} ${b}//${b - vertexOffset + normalOffset} ${c}//${c - vertexOffset + normalOffset}\n`;
               } else {
                 output += `f ${a} ${b} ${c}\n`;
@@ -262,19 +303,13 @@ export async function downloadAsOBJ(object, filename = "model", options = {}) {
               const a = i + vertexOffset;
               const b = i + 1 + vertexOffset;
               const c = i + 2 + vertexOffset;
-              
-              if (normal) {
-                output += `f ${a}//${a - vertexOffset + normalOffset} ${b}//${b - vertexOffset + normalOffset} ${c}//${c - vertexOffset + normalOffset}\n`;
-              } else {
-                output += `f ${a} ${b} ${c}\n`;
-              }
+              output += `f ${a} ${b} ${c}\n`;
             }
           }
 
           vertexOffset += position.count;
-          if (normal) {
-            normalOffset += normal.count;
-          }
+          if (normal) normalOffset += normal.count;
+          if (uv) uvOffset += uv.count;
           
           output += "\n";
         }
@@ -300,7 +335,7 @@ export async function downloadAsOBJ(object, filename = "model", options = {}) {
 }
 
 /**
- * Export to STL format with baked transforms
+ * Export to STL format
  */
 export async function downloadAsSTL(object, filename = "model", options = {}) {
   return new Promise((resolve, reject) => {
@@ -340,7 +375,6 @@ export async function downloadAsSTL(object, filename = "model", options = {}) {
             const vB = getVertex(b);
             const vC = getVertex(c);
             
-            // Calculate normal
             const edge1 = new THREE.Vector3().subVectors(vB, vA);
             const edge2 = new THREE.Vector3().subVectors(vC, vA);
             const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
@@ -363,41 +397,34 @@ export async function downloadAsSTL(object, filename = "model", options = {}) {
       let blob;
       
       if (binary) {
-        // Binary STL
         const bufferSize = 84 + triangles.length * 50;
         const buffer = new ArrayBuffer(bufferSize);
         const dataView = new DataView(buffer);
         
-        // Header (80 bytes)
-        const header = "Exported from 3D CAD Viewer";
+        const header = "Exported from 3D CAD Viewer - PBR";
         for (let i = 0; i < 80; i++) {
           dataView.setUint8(i, i < header.length ? header.charCodeAt(i) : 0);
         }
         
-        // Triangle count
         dataView.setUint32(80, triangles.length, true);
         
         let offset = 84;
         for (const tri of triangles) {
-          // Normal
           dataView.setFloat32(offset, tri.normal.x, true); offset += 4;
           dataView.setFloat32(offset, tri.normal.y, true); offset += 4;
           dataView.setFloat32(offset, tri.normal.z, true); offset += 4;
           
-          // Vertices
           for (const v of tri.vertices) {
             dataView.setFloat32(offset, v.x, true); offset += 4;
             dataView.setFloat32(offset, v.y, true); offset += 4;
             dataView.setFloat32(offset, v.z, true); offset += 4;
           }
           
-          // Attribute byte count
           dataView.setUint16(offset, 0, true); offset += 2;
         }
         
         blob = new Blob([buffer], { type: "application/octet-stream" });
       } else {
-        // ASCII STL
         let output = "solid exported\n";
         
         for (const tri of triangles) {
@@ -439,6 +466,7 @@ export function getModelStats(object) {
   let vertices = 0;
   let triangles = 0;
   let meshCount = 0;
+  let textureCount = 0;
   
   const boundingBox = new THREE.Box3();
   
@@ -452,7 +480,16 @@ export function getModelStats(object) {
         triangles += index ? index.count / 3 : position.count / 3;
       }
       
-      // Update bounding box
+      // Count textures
+      if (child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(mat => {
+          ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'].forEach(prop => {
+            if (mat[prop]) textureCount++;
+          });
+        });
+      }
+      
       child.geometry.computeBoundingBox();
       if (child.geometry.boundingBox) {
         const worldBox = child.geometry.boundingBox.clone();
@@ -469,6 +506,7 @@ export function getModelStats(object) {
     vertices,
     triangles: Math.floor(triangles),
     meshCount,
+    textureCount,
     boundingBox: {
       min: boundingBox.min,
       max: boundingBox.max,
