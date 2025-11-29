@@ -1,14 +1,18 @@
-import React, { useEffect, useRef } from "react";
+// Components/Model.jsx
+import React, { useEffect, useRef, useCallback } from "react";
 import { useThree } from "@react-three/fiber";
 import { TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 
-function Model({ scene, transformMode = 'none', onTransformChange }) {
-  const { camera } = useThree();
+function Model({ scene, transformMode = 'none', onTransformChange, onModelUpdate }) {
+  const { camera, gl } = useThree();
   const groupRef = useRef();
+  const transformControlsRef = useRef();
+  const initialSetupDone = useRef(false);
 
+  // Setup scene on load
   useEffect(() => {
-    if (!scene) return;
+    if (!scene || initialSetupDone.current) return;
 
     // Reset transformations
     scene.position.set(0, 0, 0);
@@ -42,7 +46,64 @@ function Model({ scene, transformMode = 'none', onTransformChange }) {
     camera.lookAt(0, size.y / 2, 0);
     camera.updateProjectionMatrix();
 
-  }, [scene, camera]);
+    // Update world matrix
+    scene.updateMatrixWorld(true);
+
+    initialSetupDone.current = true;
+
+    // Notify parent of initial model state
+    if (onModelUpdate) {
+      onModelUpdate(scene);
+    }
+
+  }, [scene, camera, onModelUpdate]);
+
+  // Reset setup flag when scene changes
+  useEffect(() => {
+    return () => {
+      initialSetupDone.current = false;
+    };
+  }, [scene]);
+
+  // Handle transform changes
+  const handleTransformChange = useCallback(() => {
+    if (scene) {
+      scene.updateMatrixWorld(true);
+      if (onModelUpdate) {
+        onModelUpdate(scene);
+      }
+    }
+  }, [scene, onModelUpdate]);
+
+  // Setup transform controls event listeners
+  useEffect(() => {
+    const controls = transformControlsRef.current;
+    if (!controls) return;
+
+    const handleDraggingChanged = (event) => {
+      onTransformChange?.(event.value);
+      
+      // Update model when drag ends
+      if (!event.value) {
+        handleTransformChange();
+      }
+    };
+
+    const handleObjectChange = () => {
+      // Real-time updates during transform
+      if (scene) {
+        scene.updateMatrixWorld(true);
+      }
+    };
+
+    controls.addEventListener('dragging-changed', handleDraggingChanged);
+    controls.addEventListener('objectChange', handleObjectChange);
+
+    return () => {
+      controls.removeEventListener('dragging-changed', handleDraggingChanged);
+      controls.removeEventListener('objectChange', handleObjectChange);
+    };
+  }, [scene, onTransformChange, handleTransformChange]);
 
   if (!scene) return null;
 
@@ -50,9 +111,17 @@ function Model({ scene, transformMode = 'none', onTransformChange }) {
     <group ref={groupRef}>
       {transformMode !== 'none' ? (
         <TransformControls
+          ref={transformControlsRef}
           mode={transformMode}
+          object={scene}
+          camera={camera}
+          domElement={gl.domElement}
+          size={0.7}
           onMouseDown={() => onTransformChange?.(true)}
-          onMouseUp={() => onTransformChange?.(false)}
+          onMouseUp={() => {
+            onTransformChange?.(false);
+            handleTransformChange();
+          }}
         >
           <primitive object={scene} />
         </TransformControls>

@@ -1,3 +1,4 @@
+// Viewer.js
 import React, { useEffect, useState, Suspense, useCallback, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
@@ -10,6 +11,7 @@ import CameraController from "./Components/CameraController";
 import Sidebar from "./Components/Sidebar";
 import Toolbar from "./Components/Toolbar";
 import { loadModel } from "./modelLoader";
+import { downloadAsGLB, downloadAsGLTF, downloadAsOBJ, downloadAsSTL, getModelStats } from "./services/exportService";
 
 export default function Viewer() {
   const [model, setModel] = useState(null);
@@ -32,6 +34,17 @@ export default function Viewer() {
   const [zoom, setZoom] = useState(100);
   const [resetCamera, setResetCamera] = useState(false);
   
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState("");
+  const [bakeTransforms, setBakeTransforms] = useState(true);
+  
+  // Model stats
+  const [modelStats, setModelStats] = useState(null);
+  
+  // Reference to the actual model in the scene (with transforms applied)
+  const modelRef = useRef(null);
+  
   const orbitControlsRef = useRef();
 
   const processFile = useCallback((file) => {
@@ -46,6 +59,10 @@ export default function Viewer() {
         setModel(scene);
         setLoading(false);
         setLoadingStatus("");
+        
+        // Calculate model stats
+        const stats = getModelStats(scene);
+        setModelStats(stats);
       })
       .catch((err) => {
         setError(typeof err === 'string' ? err : err.message || 'Failed to load');
@@ -83,6 +100,15 @@ export default function Viewer() {
     }
   }, [wireframe, model]);
 
+  // Update model stats when transforms change
+  const updateModelStats = useCallback(() => {
+    if (modelRef.current) {
+      modelRef.current.updateMatrixWorld(true);
+      const stats = getModelStats(modelRef.current);
+      setModelStats(stats);
+    }
+  }, []);
+
   const handleResetCamera = () => {
     setResetCamera(true);
     setZoom(100);
@@ -99,41 +125,109 @@ export default function Viewer() {
     setZoom(100);
     setError("");
     setWarning("");
+    setModelStats(null);
+    modelRef.current = null;
   };
+
+  // Export handler - uses the actual model reference with transforms
+  const handleExport = async (format = 'glb') => {
+    // Use modelRef if available (has transforms), otherwise fall back to model
+    const exportTarget = modelRef.current || model;
+    
+    if (!exportTarget) {
+      setError("No model to export");
+      return;
+    }
+    
+    setIsExporting(true);
+    setExportStatus(`Preparing ${format.toUpperCase()} export...`);
+    
+    try {
+      // Ensure world matrices are updated before export
+      exportTarget.updateMatrixWorld(true);
+      
+      const baseName = fileName ? fileName.replace(/\.[^/.]+$/, "") : "model";
+      const exportOptions = { bakeTransforms };
+      
+      setExportStatus(`Generating ${format.toUpperCase()} file${bakeTransforms ? ' (with transforms baked)' : ''}...`);
+      
+      let result;
+      switch (format) {
+        case 'gltf':
+          result = await downloadAsGLTF(exportTarget, baseName, exportOptions);
+          break;
+        case 'obj':
+          result = await downloadAsOBJ(exportTarget, baseName, exportOptions);
+          break;
+        case 'stl':
+          result = await downloadAsSTL(exportTarget, baseName, exportOptions);
+          break;
+        case 'glb':
+        default:
+          result = await downloadAsGLB(exportTarget, baseName, exportOptions);
+          break;
+      }
+      
+      const sizeStr = result.size > 1024 * 1024 
+        ? `${(result.size / 1024 / 1024).toFixed(2)} MB`
+        : `${(result.size / 1024).toFixed(1)} KB`;
+      
+      setExportStatus(`✓ Export complete! (${sizeStr})`);
+      setTimeout(() => setExportStatus(""), 3000);
+    } catch (err) {
+      setError(`Export failed: ${err.message}`);
+      setExportStatus("");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Callback when model transforms change
+  const handleModelUpdate = useCallback((updatedModel) => {
+    modelRef.current = updatedModel;
+    updateModelStats();
+  }, [updateModelStats]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-900 text-white">
       <Sidebar
-  loading={loading}
-  loadingStatus={loadingStatus}
-  fileName={fileName}
-  error={error}
-  warning={warning}
-  model={model}
-  isDragging={isDragging}
-  transformMode={transformMode}
-  setTransformMode={setTransformMode}
-  zoom={zoom}
-  setZoom={setZoom}
-  handleZoomIn={handleZoomIn}
-  handleZoomOut={handleZoomOut}
-  handleResetCamera={handleResetCamera}
-  wireframe={wireframe}
-  setWireframe={setWireframe}
-  autoRotate={autoRotate}
-  setAutoRotate={setAutoRotate}
-  showGrid={showGrid}
-  setShowGrid={setShowGrid}
-  showBase={showBase}
-  setShowBase={setShowBase}
-  bgColor={bgColor}
-  setBgColor={setBgColor}
-  handleFile={handleFile}
-  handleDrop={handleDrop}
-  handleDragOver={handleDragOver}
-  handleDragLeave={handleDragLeave}
-  clearModel={clearModel}
-/>
+        loading={loading}
+        loadingStatus={loadingStatus}
+        fileName={fileName}
+        error={error}
+        warning={warning}
+        model={model}
+        isDragging={isDragging}
+        transformMode={transformMode}
+        setTransformMode={setTransformMode}
+        zoom={zoom}
+        setZoom={setZoom}
+        handleZoomIn={handleZoomIn}
+        handleZoomOut={handleZoomOut}
+        handleResetCamera={handleResetCamera}
+        wireframe={wireframe}
+        setWireframe={setWireframe}
+        autoRotate={autoRotate}
+        setAutoRotate={setAutoRotate}
+        showGrid={showGrid}
+        setShowGrid={setShowGrid}
+        showBase={showBase}
+        setShowBase={setShowBase}
+        bgColor={bgColor}
+        setBgColor={setBgColor}
+        handleFile={handleFile}
+        handleDrop={handleDrop}
+        handleDragOver={handleDragOver}
+        handleDragLeave={handleDragLeave}
+        clearModel={clearModel}
+        // Export props
+        onExport={handleExport}
+        isExporting={isExporting}
+        exportStatus={exportStatus}
+        bakeTransforms={bakeTransforms}
+        setBakeTransforms={setBakeTransforms}
+        modelStats={modelStats}
+      />
 
       <div className="flex-1 relative overflow-hidden">
         {!model && !loading && (
@@ -174,6 +268,7 @@ export default function Viewer() {
                 scene={model} 
                 transformMode={transformMode}
                 onTransformChange={setIsTransforming}
+                onModelUpdate={handleModelUpdate}
               />
             )}
           </Suspense>
@@ -196,14 +291,32 @@ export default function Viewer() {
           />
         </Canvas>
 
+        {/* Transform mode indicator */}
         {model && transformMode !== 'none' && (
           <div className="absolute top-4 right-4 px-3 py-2 bg-gray-800/90 rounded-lg">
             <p className="text-xs text-gray-300">
               <span className="font-bold text-green-400">{transformMode}</span> mode
+              <span className="block text-gray-500 mt-1">Changes will be exported</span>
             </p>
           </div>
         )}
 
+        {/* Export status overlay */}
+        {/* {exportStatus && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-blue-600/90 rounded-lg shadow-lg">
+            <p className="text-sm text-white flex items-center gap-2">
+              {isExporting && (
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                </svg>
+              )}
+              {exportStatus}
+            </p>
+          </div>
+        )} */}
+
+        {/* Info overlay */}
         <div className="absolute top-4 left-4 flex flex-col gap-2">
           {model && fileName && (
             <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg">
@@ -215,13 +328,21 @@ export default function Viewer() {
               <p className="text-xs text-gray-300">🔍 {zoom}%</p>
             </div>
           )}
+          {modelStats && (
+            <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg">
+              <p className="text-xs text-gray-300">
+                📊 {modelStats.vertices.toLocaleString()} verts • {modelStats.triangles.toLocaleString()} tris
+              </p>
+            </div>
+          )}
         </div>
 
+        {/* Zoom controls */}
         {model && (
           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
-            <button onClick={handleZoomIn} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg">+</button>
-            <button onClick={handleZoomOut} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg">-</button>
-            <button onClick={handleResetCamera} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg">↺</button>
+            <button onClick={handleZoomIn} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg transition-colors">+</button>
+            <button onClick={handleZoomOut} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg transition-colors">-</button>
+            <button onClick={handleResetCamera} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg transition-colors">↺</button>
           </div>
         )}
 
@@ -234,6 +355,8 @@ export default function Viewer() {
           transformMode={transformMode}
           setTransformMode={setTransformMode}
           clearModel={clearModel}
+          onExport={handleExport}
+          isExporting={isExporting}
         />
       </div>
     </div>
