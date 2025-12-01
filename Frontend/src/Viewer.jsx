@@ -1,8 +1,8 @@
-// Viewer.js
 import React, { useEffect, useState, Suspense, useCallback, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
+import TWEEN from '@tweenjs/tween.js';
 
 import LoaderFallback from "./Components/LoaderFallback";
 import Model from "./Components/Model";
@@ -13,7 +13,14 @@ import Toolbar from "./Components/Toolbar";
 import { loadModel } from "./modelLoader";
 import { downloadAsGLB, downloadAsGLTF, downloadAsOBJ, downloadAsSTL, getModelStats } from "./services/exportService";
 
+// Helper to update tweens inside the canvas loop
+function CameraAnimator() {
+  useFrame(() => TWEEN.update());
+  return null;
+}
+
 export default function Viewer() {
+  // Model State
   const [model, setModel] = useState(null);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -22,31 +29,43 @@ export default function Viewer() {
   const [fileName, setFileName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   
+  // View State
   const [wireframe, setWireframe] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const [bgColor, setBgColor] = useState("#1a1a2e");
   const [showGrid, setShowGrid] = useState(true);
   const [showBase, setShowBase] = useState(true);
-  
-  const [transformMode, setTransformMode] = useState('none');
-  const [isTransforming, setIsTransforming] = useState(false);
-  
   const [zoom, setZoom] = useState(100);
   const [resetCamera, setResetCamera] = useState(false);
   
-  // Export state
+  // Animation State (Prevents conflicts between AutoRotate and Focus)
+  const [isFocusing, setIsFocusing] = useState(false);
+  
+  // Transform State
+  const [transformMode, setTransformMode] = useState('none');
+  const [isTransforming, setIsTransforming] = useState(false);
+  
+  // Lighting & Shadow State
+  const [lights, setLights] = useState({
+    ambient: { intensity: 0.4, visible: true },
+    directional: { intensity: 1.5, position: [5, 10, 5], color: "#ffffff", visible: true },
+    point: { intensity: 1.0, position: [-5, 5, -5], color: "#ffffff", visible: false },
+    environment: { preset: "city", visible: true, blur: 0.8, intensity: 1.0 },
+    shadows: { enabled: true, opacity: 0.4, blur: 2.0 }
+  });
+
+  // Export State
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
   const [bakeTransforms, setBakeTransforms] = useState(true);
-  
-  // Model stats
   const [modelStats, setModelStats] = useState(null);
   
-  // Reference to the actual model in the scene (with transforms applied)
+  // Refs
   const modelRef = useRef(null);
-  
   const orbitControlsRef = useRef();
+  const cameraRef = useRef();
 
+  // File Processing
   const processFile = useCallback((file) => {
     setError("");
     setWarning("");
@@ -59,8 +78,6 @@ export default function Viewer() {
         setModel(scene);
         setLoading(false);
         setLoadingStatus("");
-        
-        // Calculate model stats
         const stats = getModelStats(scene);
         setModelStats(stats);
       })
@@ -71,18 +88,8 @@ export default function Viewer() {
       });
   }, []);
 
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) processFile(file);
-  };
-
+  const handleFile = (e) => { const file = e.target.files?.[0]; if (file) processFile(file); };
+  const handleDrop = (e) => { e.preventDefault(); setIsDragging(false); const file = e.dataTransfer.files[0]; if (file) processFile(file); };
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
 
@@ -90,17 +97,13 @@ export default function Viewer() {
     if (model) {
       model.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(mat => mat.wireframe = wireframe);
-          } else {
-            child.material.wireframe = wireframe;
-          }
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(mat => mat.wireframe = wireframe);
         }
       });
     }
   }, [wireframe, model]);
 
-  // Update model stats when transforms change
   const updateModelStats = useCallback(() => {
     if (modelRef.current) {
       modelRef.current.updateMatrixWorld(true);
@@ -129,49 +132,24 @@ export default function Viewer() {
     modelRef.current = null;
   };
 
-  // Export handler - uses the actual model reference with transforms
   const handleExport = async (format = 'glb') => {
-    // Use modelRef if available (has transforms), otherwise fall back to model
     const exportTarget = modelRef.current || model;
-    
-    if (!exportTarget) {
-      setError("No model to export");
-      return;
-    }
-    
+    if (!exportTarget) { setError("No model to export"); return; }
     setIsExporting(true);
     setExportStatus(`Preparing ${format.toUpperCase()} export...`);
-    
     try {
-      // Ensure world matrices are updated before export
       exportTarget.updateMatrixWorld(true);
-      
       const baseName = fileName ? fileName.replace(/\.[^/.]+$/, "") : "model";
       const exportOptions = { bakeTransforms };
-      
-      setExportStatus(`Generating ${format.toUpperCase()} file${bakeTransforms ? ' (with transforms baked)' : ''}...`);
-      
+      setExportStatus(`Generating ${format.toUpperCase()} file...`);
       let result;
       switch (format) {
-        case 'gltf':
-          result = await downloadAsGLTF(exportTarget, baseName, exportOptions);
-          break;
-        case 'obj':
-          result = await downloadAsOBJ(exportTarget, baseName, exportOptions);
-          break;
-        case 'stl':
-          result = await downloadAsSTL(exportTarget, baseName, exportOptions);
-          break;
-        case 'glb':
-        default:
-          result = await downloadAsGLB(exportTarget, baseName, exportOptions);
-          break;
+        case 'gltf': result = await downloadAsGLTF(exportTarget, baseName, exportOptions); break;
+        case 'obj': result = await downloadAsOBJ(exportTarget, baseName, exportOptions); break;
+        case 'stl': result = await downloadAsSTL(exportTarget, baseName, exportOptions); break;
+        case 'glb': default: result = await downloadAsGLB(exportTarget, baseName, exportOptions); break;
       }
-      
-      const sizeStr = result.size > 1024 * 1024 
-        ? `${(result.size / 1024 / 1024).toFixed(2)} MB`
-        : `${(result.size / 1024).toFixed(1)} KB`;
-      
+      const sizeStr = result.size > 1024 * 1024 ? `${(result.size / 1024 / 1024).toFixed(2)} MB` : `${(result.size / 1024).toFixed(1)} KB`;
       setExportStatus(`✓ Export complete! (${sizeStr})`);
       setTimeout(() => setExportStatus(""), 3000);
     } catch (err) {
@@ -182,11 +160,91 @@ export default function Viewer() {
     }
   };
 
-  // Callback when model transforms change
   const handleModelUpdate = useCallback((updatedModel) => {
     modelRef.current = updatedModel;
     updateModelStats();
   }, [updateModelStats]);
+
+  // =========================================================
+  // 🎥 FOCUS ON MATERIAL ANIMATION (FIXED)
+  // =========================================================
+  const handleFocusOnMaterial = useCallback((materialUuid) => {
+    if (!model || !orbitControlsRef.current || !cameraRef.current) return;
+
+    // 1. Stop existing Tweens and set Focusing state
+    TWEEN.removeAll();
+    setIsFocusing(true);
+
+    const box = new THREE.Box3();
+    let found = false;
+
+    // 2. Find all meshes using this material
+    model.traverse((child) => {
+      if (child.isMesh && child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        if (mats.some(m => m.uuid === materialUuid)) {
+          found = true;
+          const geomBox = child.geometry.boundingBox.clone();
+          geomBox.applyMatrix4(child.matrixWorld);
+          box.union(geomBox);
+        }
+      }
+    });
+
+    if (!found || box.isEmpty()) {
+      setIsFocusing(false);
+      return;
+    }
+
+    // 3. Calculate positions
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fitOffset = maxDim * 2.0; // Multiplier to fit in view
+    
+    const camera = cameraRef.current;
+    const controls = orbitControlsRef.current;
+
+    const currentPos = camera.position.clone();
+    const currentTarget = controls.target.clone();
+
+    // Direction vector
+    const direction = new THREE.Vector3().subVectors(currentPos, currentTarget).normalize();
+    const newPos = new THREE.Vector3().copy(center).add(direction.multiplyScalar(fitOffset));
+
+    // 4. Animate using a single object for sync
+    const start = { 
+      x: currentPos.x, y: currentPos.y, z: currentPos.z,
+      tx: currentTarget.x, ty: currentTarget.y, tz: currentTarget.z
+    };
+    
+    const end = { 
+      x: newPos.x, y: newPos.y, z: newPos.z,
+      tx: center.x, ty: center.y, tz: center.z
+    };
+
+    new TWEEN.Tween(start)
+      .to(end, 1000) // 1 second animation
+      .easing(TWEEN.Easing.Cubic.InOut)
+      .onUpdate(() => {
+        // Update Camera
+        camera.position.set(start.x, start.y, start.z);
+        
+        // Update Target
+        if (orbitControlsRef.current) {
+          orbitControlsRef.current.target.set(start.tx, start.ty, start.tz);
+          orbitControlsRef.current.update(); // CRITICAL for smooth OrbitControls update
+        }
+      })
+      .onComplete(() => {
+        setIsFocusing(false); // Re-enable AutoRotate if it was on
+      })
+      .start();
+
+  }, [model]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-900 text-white">
@@ -220,13 +278,15 @@ export default function Viewer() {
         handleDragOver={handleDragOver}
         handleDragLeave={handleDragLeave}
         clearModel={clearModel}
-        // Export props
         onExport={handleExport}
         isExporting={isExporting}
         exportStatus={exportStatus}
         bakeTransforms={bakeTransforms}
         setBakeTransforms={setBakeTransforms}
         modelStats={modelStats}
+        lights={lights}
+        setLights={setLights}
+        onFocusMaterial={handleFocusOnMaterial}
       />
 
       <div className="flex-1 relative overflow-hidden">
@@ -234,17 +294,10 @@ export default function Viewer() {
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
             <div className="text-center">
               <div className="w-24 h-24 rounded-2xl bg-gray-800/50 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
+                <svg className="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
               </div>
               <h2 className="text-xl font-semibold text-gray-400 mb-2">No Model Loaded</h2>
               <p className="text-sm text-gray-500 mb-4">Upload STEP, Blender, Maya, or GLTF files</p>
-              <div className="flex flex-wrap gap-2 justify-center max-w-xs">
-                {['STEP', 'BLEND', 'MAYA', 'GLTF', 'FBX'].map(fmt => (
-                  <span key={fmt} className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-400">{fmt}</span>
-                ))}
-              </div>
             </div>
           </div>
         )}
@@ -252,15 +305,25 @@ export default function Viewer() {
         <Canvas 
           camera={{ position: [3, 2, 3], fov: 50, near: 0.1, far: 1000 }}
           style={{ background: bgColor }}
-          shadows
+          shadows={lights.shadows.enabled}
+          onCreated={({ camera }) => { cameraRef.current = camera; }}
         >
+          <CameraAnimator />
           <CameraController zoom={zoom} resetCamera={resetCamera} />
           
-          <ambientLight intensity={0.4} />
-          <directionalLight intensity={1} position={[10, 10, 10]} castShadow />
-          <directionalLight intensity={0.3} position={[-10, -10, -10]} />
-          <pointLight position={[0, 10, 0]} intensity={0.3} />
-          <hemisphereLight intensity={0.3} groundColor="#1a1a2e" />
+          {lights.ambient.visible && <ambientLight intensity={lights.ambient.intensity} />}
+          {lights.directional.visible && (
+            <directionalLight 
+              intensity={lights.directional.intensity} 
+              position={lights.directional.position} 
+              color={lights.directional.color}
+              castShadow={lights.shadows.enabled}
+              shadow-mapSize={[2048, 2048]}
+              shadow-bias={-0.0001}
+            />
+          )}
+          {lights.point.visible && <pointLight position={lights.point.position} intensity={lights.point.intensity} color={lights.point.color} />}
+          {lights.environment.visible && <Environment preset={lights.environment.preset} blur={lights.environment.blur} background={false} environmentIntensity={lights.environment.intensity} />}
 
           <Suspense fallback={<LoaderFallback />}>
             {model && (
@@ -273,13 +336,14 @@ export default function Viewer() {
             )}
           </Suspense>
 
-          <Ground showBase={showBase} />
-          
+          <Ground showBase={showBase} shadowEnabled={lights.shadows.enabled} shadowOpacity={lights.shadows.opacity} shadowBlur={lights.shadows.blur} />
           {showGrid && <gridHelper args={[10, 10, "#374151", "#1f2937"]} position={[0, 0, 0]} />}
 
           <OrbitControls 
+            makeDefault // Important for Drei to manage control state
             ref={orbitControlsRef}
-            autoRotate={autoRotate && transformMode === 'none'}
+            // Disable autoRotate while we are focusing on a material so they don't fight
+            autoRotate={!isFocusing && autoRotate && transformMode === 'none'}
             autoRotateSpeed={2}
             enablePan={true}
             enableZoom={true}
@@ -291,53 +355,17 @@ export default function Viewer() {
           />
         </Canvas>
 
-        {/* Transform mode indicator */}
         {model && transformMode !== 'none' && (
           <div className="absolute top-4 right-4 px-3 py-2 bg-gray-800/90 rounded-lg">
-            <p className="text-xs text-gray-300">
-              <span className="font-bold text-green-400">{transformMode}</span> mode
-              <span className="block text-gray-500 mt-1">Changes will be exported</span>
-            </p>
+            <p className="text-xs text-gray-300"><span className="font-bold text-green-400">{transformMode}</span> mode</p>
           </div>
         )}
 
-        {/* Export status overlay */}
-        {/* {exportStatus && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-blue-600/90 rounded-lg shadow-lg">
-            <p className="text-sm text-white flex items-center gap-2">
-              {isExporting && (
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                </svg>
-              )}
-              {exportStatus}
-            </p>
-          </div>
-        )} */}
-
-        {/* Info overlay */}
         <div className="absolute top-4 left-4 flex flex-col gap-2">
-          {model && fileName && (
-            <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg">
-              <p className="text-xs text-gray-300 truncate max-w-48">📄 {fileName}</p>
-            </div>
-          )}
-          {model && (
-            <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg">
-              <p className="text-xs text-gray-300">🔍 {zoom}%</p>
-            </div>
-          )}
-          {modelStats && (
-            <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg">
-              <p className="text-xs text-gray-300">
-                📊 {modelStats.vertices.toLocaleString()} verts • {modelStats.triangles.toLocaleString()} tris
-              </p>
-            </div>
-          )}
+          {model && fileName && <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg"><p className="text-xs text-gray-300 truncate max-w-48">📄 {fileName}</p></div>}
+          {modelStats && <div className="px-3 py-1.5 bg-gray-800/80 rounded-lg"><p className="text-xs text-gray-300">📊 {modelStats.vertices.toLocaleString()} verts</p></div>}
         </div>
 
-        {/* Zoom controls */}
         {model && (
           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
             <button onClick={handleZoomIn} className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg transition-colors">+</button>

@@ -1,372 +1,345 @@
 // Components/PBRTexturePanel.jsx
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import * as THREE from "three";
 
-// PBR Presets
-const PBR_PRESETS = [
-  { name: 'Plastic', icon: '🔵', metalness: 0, roughness: 0.4 },
-  { name: 'Metal', icon: '⚙️', metalness: 1, roughness: 0.2 },
-  { name: 'Rubber', icon: '⚫', metalness: 0, roughness: 0.9 },
-  { name: 'Glass', icon: '💎', metalness: 0, roughness: 0.05, opacity: 0.3 },
-  { name: 'Chrome', icon: '✨', metalness: 1, roughness: 0.05 },
-  { name: 'Matte', icon: '🎨', metalness: 0, roughness: 1 },
-  { name: 'Ceramic', icon: '🏺', metalness: 0, roughness: 0.3 },
-  { name: 'Satin', icon: '🎀', metalness: 0.3, roughness: 0.5 },
-  { name: 'Gold', icon: '🥇', metalness: 1, roughness: 0.1, color: '#FFD700' },
-  { name: 'Silver', icon: '🥈', metalness: 1, roughness: 0.15, color: '#C0C0C0' },
-  { name: 'Copper', icon: '🥉', metalness: 1, roughness: 0.25, color: '#B87333' },
-  { name: 'Wood', icon: '🪵', metalness: 0, roughness: 0.7, color: '#8B4513' },
-];
+// ============================================================================
+// 1. IMPORT YOUR TEXTURES HERE
+// ============================================================================
+import goldBaseColor from '../assets/Poliigon_MetalGoldPaint_7253/2K/Poliigon_MetalGoldPaint_7253_BaseColor.jpg';
+import goldNormal from '../assets/Poliigon_MetalGoldPaint_7253/2K/Poliigon_MetalGoldPaint_7253_Normal.png';
+import goldRoughness from '../assets/Poliigon_MetalGoldPaint_7253/2K/Poliigon_MetalGoldPaint_7253_Roughness.jpg';
+import goldMetallic from '../assets/Poliigon_MetalGoldPaint_7253/2K/Poliigon_MetalGoldPaint_7253_Metallic.jpg';
+import goldAO from '../assets/Poliigon_MetalGoldPaint_7253/2K/Poliigon_MetalGoldPaint_7253_AmbientOcclusion.jpg';
+import goldPreview from '../assets/Poliigon_MetalGoldPaint_7253/Poliigon_MetalGoldPaint_7253_Preview1.png';
+
+// ============================================================================
+// 2. IMPORT YOUR TEXTURES HERE
+// ============================================================================
+import grassBaseColor from '../assets/Poliigon_GrassPatchyGround_4585/2K/Poliigon_GrassPatchyGround_4585_BaseColor.jpg';
+import grassNormal from '../assets/Poliigon_GrassPatchyGround_4585/2K/Poliigon_GrassPatchyGround_4585_Normal.png';
+import grassRoughness from '../assets/Poliigon_GrassPatchyGround_4585/2K/Poliigon_GrassPatchyGround_4585_Roughness.jpg';
+import grassMetallic from '../assets/Poliigon_GrassPatchyGround_4585/2K/Poliigon_GrassPatchyGround_4585_Metallic.jpg';
+import grassAO from '../assets/Poliigon_GrassPatchyGround_4585/2K/Poliigon_GrassPatchyGround_4585_AmbientOcclusion.jpg';
+import grassPreview from '../assets/Poliigon_GrassPatchyGround_4585/Poliigon_GrassPatchyGround_4585_Preview1.png';
+
+// ============================================================================
+// 3. IMPORT YOUR TEXTURES HERE
+// ============================================================================
+import sandBaseColor from '../assets/GroundSand005/GroundSand005_COL_2K.jpg';
+import sandNormal from '../assets/GroundSand005/GroundSand005_NRM_2K.jpg';
+import sandGloss from '../assets/GroundSand005/GroundSand005_GLOSS_2K.jpg'; // Using Gloss as Roughness
+import sandAO from '../assets/GroundSand005/GroundSand005_AO_2K.jpg';
+import sandMetallic from '../assets/GroundSand005/GroundSand005_DISP_2K.jpg';
+import sandPreview from '../assets/GroundSand005/GroundSand005_Preview1.png';
+
+// ============================================================================
+// 4 IMPORT YOUR TEXTURES HERE
+// ============================================================================
+import GroundBaseColor from '../assets/GroundDirtWeedsPatchy004/GroundDirtWeedsPatchy004_COL_2K.jpg';
+import GroundNormal from '../assets/GroundDirtWeedsPatchy004/GroundDirtWeedsPatchy004_NRM_2K.jpg';
+import GroundGloss from '../assets/GroundDirtWeedsPatchy004/GroundDirtWeedsPatchy004_GLOSS_2K.jpg'; // Using Gloss as Roughness
+import GroundAO from '../assets/GroundDirtWeedsPatchy004/GroundDirtWeedsPatchy004_AO_2K.jpg';
+import GroundMetallic from '../assets/GroundDirtWeedsPatchy004/GroundDirtWeedsPatchy004_DISP_2K.jpg';
+import GroundPreview from '../assets/GroundDirtWeedsPatchy004/GroundDirtWeedsPatchy004_Preview1.png';
+
+// ============================================================================
+// 5. IMPORT YOUR TEXTURES HERE
+// ============================================================================
+import RattanWeaveBaseColor from '../assets/Poliigon_RattanWeave_6945/2K/Poliigon_RattanWeave_6945_BaseColor.jpg';
+import RattanWeaveNormal from '../assets/Poliigon_RattanWeave_6945/2K/Poliigon_RattanWeave_6945_Normal.png';
+import RattanWeaveRoughness from '../assets/Poliigon_RattanWeave_6945/2K/Poliigon_RattanWeave_6945_Roughness.jpg';
+import RattanWeaveMetallic from '../assets/Poliigon_RattanWeave_6945/2K/Poliigon_RattanWeave_6945_Metallic.jpg';
+import RattanWeaveAO from '../assets/Poliigon_RattanWeave_6945/2K/Poliigon_RattanWeave_6945_AmbientOcclusion.jpg';
+import RattanWeavePreview from '../assets/Poliigon_RattanWeave_6945/Poliigon_RattanWeave_6945_Preview1.png';
+
+// ============================================================================
+// 6. IMPORT YOUR TEXTURES HERE
+// ============================================================================
+import TilesSquareBaseColor from '../assets/TilesSquarePoolMixed001/TilesSquarePoolMixed001_COL_2K.jpg';
+import TilesSquareNormal from '../assets/TilesSquarePoolMixed001/TilesSquarePoolMixed001_NRM_2K.jpg';
+import TilesSquareGloss from '../assets/TilesSquarePoolMixed001/TilesSquarePoolMixed001_GLOSS_2K.jpg'; // Using Gloss as Roughness
+// import TilesSquareAO from '../assets/TilesSquarePoolMixed001/GroundDirtWeedsPatchy004_AO_2K.jpg';
+import TilesSquareMetallic from '../assets/TilesSquarePoolMixed001/TilesSquarePoolMixed001_REFL_2K.jpg';
+import TilesSquarePreview from '../assets/TilesSquarePoolMixed001/TilesSquarePoolMixed001_Preview1.png';
 
 const TEXTURE_TYPES = [
-  { key: 'map', label: 'Albedo/Diffuse', icon: '🎨', description: 'Base color texture' },
-  { key: 'normalMap', label: 'Normal Map', icon: '🔲', description: 'Surface detail' },
-  { key: 'roughnessMap', label: 'Roughness', icon: '✨', description: 'Surface roughness' },
-  { key: 'metalnessMap', label: 'Metalness', icon: '🔩', description: 'Metallic areas' },
-  { key: 'aoMap', label: 'Ambient Occlusion', icon: '🌑', description: 'Shadow details' },
-  { key: 'displacementMap', label: 'Displacement', icon: '📐', description: 'Height map' },
-  { key: 'emissiveMap', label: 'Emissive', icon: '💡', description: 'Glow emission' },
-  { key: 'alphaMap', label: 'Alpha/Opacity', icon: '👻', description: 'Transparency' },
+  { key: 'map', label: 'Color', icon: '🎨' },
+  { key: 'normalMap', label: 'Normal', icon: '🔲' },
+  { key: 'roughnessMap', label: 'Rough', icon: '✨' },
+  { key: 'metalnessMap', label: 'Metal', icon: '🔩' },
+  { key: 'aoMap', label: 'AO', icon: '🌑' },
+  { key: 'emissiveMap', label: 'Emiss', icon: '💡' },
 ];
 
 // ============================================
-// DEFAULT TEXTURES LIBRARY
-// Add more textures here in the future
+// 2. DEFINE DEFAULT TEXTURES
 // ============================================
 const DEFAULT_TEXTURES = [
   {
     id: 'metal_gold_paint',
     name: 'Metal Gold Paint',
     category: 'metal',
-    thumbnail: '../assets/Poliigon_MetalGoldPaint_7253/Poliigon_MetalGoldPaint_7253_Preview1.png',
-    path: '../assets/Poliigon_MetalGoldPaint_7253/2k',
+    thumbnail: goldPreview, 
     files: {
-      map: 'Poliigon_MetalGoldPaint_7253_BaseColor.jpg',
-      normalMap: 'Poliigon_MetalGoldPaint_7253_Normal.png',
-      roughnessMap: 'Poliigon_MetalGoldPaint_7253_Roughness.jpg',
-      metalnessMap: 'Poliigon_MetalGoldPaint_7253_Metallic.jpg',
-      aoMap: 'Poliigon_MetalGoldPaint_7253_AmbientOcclusion.jpg',
-      displacementMap: 'Poliigon_MetalGoldPaint_7253_Displacement.tiff',
+      map: goldBaseColor,
+      normalMap: goldNormal,
+      roughnessMap: goldRoughness,
+      metalnessMap: goldMetallic,
+      aoMap: goldAO,
     }
   },
-  // ============================================
-  // ADD MORE TEXTURES HERE IN THE FUTURE:
-  // ============================================
-  // {
-  //   id: 'wood_oak',
-  //   name: 'Oak Wood',
-  //   category: 'wood',
-  //   thumbnail: '/textures/WoodOak/BaseColor.jpg',
-  //   path: '/textures/WoodOak',
-  //   files: {
-  //     map: 'BaseColor.jpg',
-  //     normalMap: 'Normal.png',
-  //     roughnessMap: 'Roughness.jpg',
-  //     aoMap: 'AmbientOcclusion.jpg',
-  //   }
-  // },
-  // {
-  //   id: 'concrete_rough',
-  //   name: 'Rough Concrete',
-  //   category: 'concrete',
-  //   thumbnail: '/textures/ConcreteRough/BaseColor.jpg',
-  //   path: '/textures/ConcreteRough',
-  //   files: {
-  //     map: 'BaseColor.jpg',
-  //     normalMap: 'Normal.png',
-  //     roughnessMap: 'Roughness.jpg',
-  //     aoMap: 'AmbientOcclusion.jpg',
-  //   }
-  // },
+  {
+    id: 'grass_paint',
+    name: 'Grass Paint',
+    category: 'nature',
+    thumbnail: grassPreview, 
+    files: {
+      map: grassBaseColor,
+      normalMap: grassNormal,
+      roughnessMap: grassRoughness,
+      metalnessMap: grassMetallic,
+      aoMap: grassAO,
+    }
+  },
+  {
+    id: 'sand',
+    name: 'Sand',
+    category: 'nature',
+    thumbnail: sandPreview, 
+    files: {
+      map: sandBaseColor,
+      normalMap: sandNormal,
+      roughnessMap: sandGloss,
+      metalnessMap: sandMetallic,
+      aoMap: sandAO,
+    }
+  },
+  {
+    id: 'Dirty_Sand',
+    name: 'Sand1',
+    category: 'nature',
+    thumbnail: GroundPreview, 
+    files: {
+      map: GroundBaseColor,
+      normalMap: GroundNormal,
+      roughnessMap: GroundGloss,
+      metalnessMap: GroundMetallic,
+      aoMap: GroundAO,
+    }
+  },
+  {
+    id: 'rattan_weave',
+    name: 'Rattan Weave',
+    category: 'nature',
+    thumbnail: RattanWeavePreview, 
+    files: {
+      map: RattanWeaveBaseColor,
+      normalMap: RattanWeaveNormal,
+      roughnessMap: RattanWeaveRoughness,
+      metalnessMap: RattanWeaveMetallic,
+      aoMap: RattanWeaveAO,
+    }
+  },
+  {
+    id: 'Tiles_Square_Pool_Mixed',
+    name: 'Tiles Square Pool Mixed',
+    category: 'nature',
+    thumbnail: TilesSquarePreview, 
+    files: {
+      map: TilesSquareBaseColor,
+      normalMap: TilesSquareNormal,
+      roughnessMap: TilesSquareGloss,
+      metalnessMap: TilesSquareMetallic,
+    }
+  },
 ];
 
 // ============================================
-// PBR Texture Library Component
+// Texture Loader Utility
 // ============================================
-function PBRTextureLibrary({ onSelectTexture, onClose }) {
-  const [textureFolders] = useState(DEFAULT_TEXTURES);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [previewTexture, setPreviewTexture] = useState(null);
-
-  const categories = ['all', ...new Set(textureFolders.map(t => t.category))];
-
-  const filteredTextures = textureFolders.filter(texture => {
-    const matchesCategory = selectedCategory === 'all' || texture.category === selectedCategory;
-    const matchesSearch = texture.name.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCategory && matchesSearch;
+const loadTexture = (url) => {
+  return new Promise((resolve, reject) => {
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      url,
+      (texture) => {
+        // Enable wrapping so scaling works
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.generateMipmaps = true;
+        resolve(texture);
+      },
+      undefined,
+      (error) => {
+        console.warn(`Failed to load texture: ${url}`, error);
+        reject(error);
+      }
+    );
   });
+};
 
-  const handleTextureSelect = (texture) => {
-    onSelectTexture(texture);
+// ============================================
+// INLINE PBR Texture Library Component
+// ============================================
+function PBRTextureLibrary({ onSelectTexture, onBack }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [customTextures, setCustomTextures] = useState([]);
+  const fileInputRef = useRef(null);
+
+  const allTextures = [...DEFAULT_TEXTURES, ...customTextures];
+  
+  const filteredTextures = allTextures.filter(texture => 
+    texture.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleCustomTextureUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const textureFiles = {};
+    const folderName = files[0].webkitRelativePath?.split('/')[0] || 'Custom Texture';
+    
+    files.forEach(file => {
+      const fileName = file.name.toLowerCase();
+      if(fileName.endsWith('.tiff') || fileName.endsWith('.tif')) return;
+
+      const url = URL.createObjectURL(file);
+      
+      if (fileName.includes('basecolor') || fileName.includes('diffuse') || fileName.includes('albedo') || fileName.includes('_col_')) {
+        textureFiles.map = { url };
+      } else if (fileName.includes('normal') || fileName.includes('_nrm_')) {
+        textureFiles.normalMap = { url };
+      } else if (fileName.includes('roughness') || fileName.includes('_rgh_') || fileName.includes('_gloss_')) {
+        textureFiles.roughnessMap = { url };
+      } else if (fileName.includes('metallic') || fileName.includes('metalness') || fileName.includes('_met_')) {
+        textureFiles.metalnessMap = { url };
+      } else if (fileName.includes('ao') || fileName.includes('occlusion')) {
+        textureFiles.aoMap = { url };
+      } else if (fileName.includes('displacement') || fileName.includes('height') || fileName.includes('_disp_')) {
+        textureFiles.displacementMap = { url };
+      } else if (fileName.includes('emissive') || fileName.includes('emission')) {
+        textureFiles.emissiveMap = { url };
+      }
+    });
+
+    if (Object.keys(textureFiles).length > 0) {
+      setCustomTextures(prev => [...prev, {
+        id: `custom_${Date.now()}`,
+        name: folderName,
+        category: 'custom',
+        thumbnail: textureFiles.map?.url || null,
+        isCustom: true,
+        customFiles: textureFiles,
+      }]);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col border border-gray-700 shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🎨</span>
-            <div>
-              <h2 className="text-lg font-bold text-white">PBR Texture Library</h2>
-              <p className="text-xs text-gray-400">{textureFolders.length} texture{textureFolders.length !== 1 ? 's' : ''} available</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Search and Filter */}
-        <div className="p-4 border-b border-gray-700 space-y-3">
-          {/* Search */}
-          <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search textures..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          {/* Categories */}
-          <div className="flex flex-wrap gap-2">
-            {categories.map(category => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize ${
-                  selectedCategory === category
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}
-              >
-                {category}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Texture Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {filteredTextures.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-gray-500">
-              <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <p className="text-sm">No textures found</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {filteredTextures.map((texture) => (
-                <TextureThumbnail
-                  key={texture.id}
-                  texture={texture}
-                  onSelect={handleTextureSelect}
-                  onPreview={setPreviewTexture}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-700 flex items-center justify-between">
-          <p className="text-xs text-gray-500">
-            Click to apply • Right-click to preview
-          </p>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors"
-          >
-            Close
-          </button>
-        </div>
+    <div className="flex flex-col h-full space-y-3">
+      {/* Header / Navigation */}
+      <div className="flex items-center gap-2 pb-2 border-b border-gray-700">
+        <button 
+          onClick={onBack}
+          className="p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <h3 className="text-sm font-bold text-white">Texture Library</h3>
       </div>
 
-      {/* Preview Modal */}
-      {previewTexture && (
-        <TexturePreviewModal
-          texture={previewTexture}
-          onClose={() => setPreviewTexture(null)}
-          onApply={() => {
-            handleTextureSelect(previewTexture);
-            setPreviewTexture(null);
-          }}
+      {/* Search & Upload */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          placeholder="Search..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 px-3 py-1.5 bg-gray-900/50 border border-gray-700 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500"
         />
+        <input ref={fileInputRef} type="file" multiple webkitdirectory="" directory="" className="hidden" onChange={handleCustomTextureUpload} />
+        <button 
+          onClick={() => fileInputRef.current?.click()} 
+          className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-400 hover:text-blue-300"
+          title="Upload Folder"
+        >
+           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+        </button>
+      </div>
+
+      {/* Texture Grid */}
+      <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+        {filteredTextures.map((texture) => {
+            const thumbnailSrc = texture.isCustom ? texture.customFiles?.map?.url : texture.thumbnail;
+            const mapCount = Object.keys(texture.isCustom ? texture.customFiles : texture.files).length;
+            
+            return (
+              <button
+                key={texture.id}
+                onClick={() => onSelectTexture(texture)}
+                className="group relative flex flex-col bg-gray-900 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition-all text-left"
+              >
+                <div className="aspect-square w-full relative bg-gray-800">
+                    {thumbnailSrc ? (
+                        <img src={thumbnailSrc} className="w-full h-full object-cover" alt={texture.name} />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">🎨</div>
+                    )}
+                    <div className="absolute top-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] text-white font-mono">
+                        {mapCount}
+                    </div>
+                    
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 bg-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="bg-blue-600 text-white text-[10px] px-2 py-1 rounded shadow-lg">Apply</span>
+                    </div>
+                </div>
+                <div className="p-2 w-full">
+                  <p className="text-[10px] text-gray-200 truncate font-medium w-full">{texture.name}</p>
+                  <p className="text-[9px] text-gray-500 capitalize">{texture.category}</p>
+                </div>
+              </button>
+            );
+        })}
+      </div>
+      
+      {filteredTextures.length === 0 && (
+          <div className="text-center py-4 text-gray-500 text-xs">No textures found</div>
       )}
     </div>
   );
 }
 
-// ============================================
-// Texture Thumbnail Component
-// ============================================
-function TextureThumbnail({ texture, onSelect, onPreview }) {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-    onPreview(texture);
+// Texture Slot Helper
+function TextureSlot({ type, typeInfo, texture, onUpload, onRemove, disabled }) {
+  const fileInputRef = useRef(null);
+  
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) onUpload(type, file);
   };
-
-  const textureMapCount = Object.keys(texture.files || {}).length;
 
   return (
     <div
-      className="group relative bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition-all cursor-pointer"
-      onClick={() => onSelect(texture)}
-      onContextMenu={handleContextMenu}
+      className={`relative p-1.5 rounded border transition-all flex items-center gap-2 ${
+        texture ? 'border-green-500/40 bg-green-500/5' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      onClick={() => !disabled && !texture && fileInputRef.current?.click()}
     >
-      {/* Thumbnail Image */}
-      <div className="aspect-square relative bg-gray-900">
-        {!imageLoaded && !imageError && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="animate-pulse bg-gray-700 w-full h-full" />
-          </div>
-        )}
-        {imageError ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
-            <span className="text-3xl">🎨</span>
-          </div>
-        ) : (
-          <img
-            src={texture.thumbnail}
-            alt={texture.name}
-            className={`w-full h-full object-cover transition-opacity ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-            onLoad={() => setImageLoaded(true)}
-            onError={() => setImageError(true)}
-          />
-        )}
-
-        {/* Hover Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-        {/* Apply Button (visible on hover) */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <span className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg">
-            Apply
-          </span>
-        </div>
-
-        {/* Map Count Badge */}
-        <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-gray-300 font-medium">
-          {textureMapCount} maps
-        </div>
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} disabled={disabled} />
+      
+      <div className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-xs ${texture ? 'bg-black/20' : 'bg-gray-700/50'}`}>
+        {texture ? <img src={texture.url} alt="" className="w-full h-full object-cover rounded" /> : <span>{typeInfo.icon}</span>}
       </div>
-
-      {/* Name */}
-      <div className="p-2.5">
-        <p className="text-sm text-gray-200 truncate font-medium">{texture.name}</p>
-        <p className="text-[11px] text-gray-500 capitalize">{texture.category}</p>
+      
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] text-gray-400 truncate">{typeInfo.label}</p>
       </div>
-    </div>
-  );
-}
-
-// ============================================
-// Texture Preview Modal
-// ============================================
-function TexturePreviewModal({ texture, onClose, onApply }) {
-  const [previewImageError, setPreviewImageError] = useState(false);
-
-  return (
-    <div 
-      className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-8"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-gray-900 rounded-xl max-w-2xl w-full border border-gray-700 overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <div>
-            <h3 className="text-lg font-bold text-white">{texture.name}</h3>
-            <p className="text-xs text-gray-400 capitalize">{texture.category}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Preview Image */}
-        <div className="p-4">
-          <div className="aspect-video bg-gray-800 rounded-lg overflow-hidden mb-4 flex items-center justify-center">
-            {previewImageError ? (
-              <div className="text-center">
-                <span className="text-4xl mb-2 block">🎨</span>
-                <p className="text-sm text-gray-500">Preview not available</p>
-              </div>
-            ) : (
-              <img
-                src={texture.thumbnail}
-                alt={texture.name}
-                className="w-full h-full object-contain"
-                onError={() => setPreviewImageError(true)}
-              />
-            )}
-          </div>
-
-          {/* Available Maps */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-300">Included Maps:</h4>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(texture.files || {}).map(([type, file]) => {
-                const typeInfo = TEXTURE_TYPES.find(t => t.key === type);
-                return (
-                  <span
-                    key={type}
-                    className="px-2.5 py-1.5 bg-gray-800 rounded-lg text-xs text-gray-400 flex items-center gap-1.5 border border-gray-700"
-                  >
-                    <span>{typeInfo?.icon || '📄'}</span>
-                    {typeInfo?.label || type}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* File Path Info */}
-          <div className="mt-4 p-2 bg-gray-800/50 rounded-lg">
-            <p className="text-[10px] text-gray-500 font-mono">
-              Path: {texture.path}
-            </p>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3 p-4 border-t border-gray-700">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onApply}
-            className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 rounded-lg text-sm text-white font-medium transition-colors"
-          >
-            Apply Texture
-          </button>
-        </div>
-      </div>
+      
+      {texture && (
+        <button onClick={(e) => { e.stopPropagation(); onRemove(type); }} className="p-1 hover:bg-red-500/20 rounded text-red-400">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -386,28 +359,10 @@ function PBRTexturePanel({
   const [internalExpanded, setInternalExpanded] = useState(false);
   const expanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
   
-  const [textures, setTextures] = useState({
-    map: null,
-    normalMap: null,
-    roughnessMap: null,
-    metalnessMap: null,
-    aoMap: null,
-    displacementMap: null,
-    emissiveMap: null,
-    alphaMap: null,
-  });
-
+  const [textures, setTextures] = useState({});
   const [showLibrary, setShowLibrary] = useState(false);
   const [loadingTextures, setLoadingTextures] = useState(false);
   const [currentTextureSet, setCurrentTextureSet] = useState(null);
-
-  const [originalColor] = useState(() => {
-    if (material) {
-      return material.color ? material.color.clone() : new THREE.Color(0xffffff);
-    }
-    return new THREE.Color(0xffffff);
-  });
-
   const [preserveOriginalColor, setPreserveOriginalColor] = useState(true);
   
   const [settings, setSettings] = useState({
@@ -420,24 +375,44 @@ function PBRTexturePanel({
     emissive: material?.emissive ? `#${material.emissive.getHexString()}` : "#000000",
     emissiveIntensity: material?.emissiveIntensity ?? 1.0,
     opacity: material?.opacity ?? 1.0,
-    envMapIntensity: material?.envMapIntensity ?? 1.0,
+    // NEW SETTING: Controls texture tiling
+    repeat: 1.0 
   });
 
-  const textureLoader = new THREE.TextureLoader();
+  const getTargetMaterials = useCallback(() => isGlobalMode && materials.length > 0 ? materials : (material ? [material] : []), [isGlobalMode, materials, material]);
 
-  const [hasVertexColors] = useState(() => {
-    return material?.vertexColors === true;
-  });
-
-  // Get target materials
-  const getTargetMaterials = useCallback(() => {
-    if (isGlobalMode && materials.length > 0) {
-      return materials;
+  const applyTextureToMaterial = (mat, type, texture, settings, preserveColor) => {
+    if(type === 'map' && !preserveColor) mat.color = new THREE.Color(0xffffff);
+    if(type === 'normalMap') mat.normalScale = new THREE.Vector2(settings.normalScale, settings.normalScale);
+    if(type === 'aoMap') mat.aoMapIntensity = settings.aoMapIntensity;
+    if(type === 'displacementMap') mat.displacementScale = settings.displacementScale;
+    if(type === 'emissiveMap') { mat.emissive = new THREE.Color(settings.emissive); mat.emissiveIntensity = settings.emissiveIntensity; }
+    if(type === 'alphaMap') mat.transparent = true;
+    
+    // APPLY REPEAT SETTING
+    if (texture) {
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(settings.repeat, settings.repeat);
     }
-    return material ? [material] : [];
-  }, [isGlobalMode, materials, material]);
 
-  // Apply texture set from library
+    mat[type] = texture;
+    mat.needsUpdate = true;
+  };
+
+  const handleTextureUpload = useCallback(async (type, file) => {
+    const url = URL.createObjectURL(file);
+    try {
+      const texture = await loadTexture(url);
+      if (type === 'map' || type === 'emissiveMap') texture.colorSpace = THREE.SRGBColorSpace;
+      else texture.colorSpace = THREE.LinearSRGBColorSpace;
+      
+      getTargetMaterials().forEach(mat => applyTextureToMaterial(mat, type, texture.clone(), settings, preserveOriginalColor));
+      setTextures(prev => ({ ...prev, [type]: { texture, url } }));
+      onUpdate?.();
+    } catch (error) { console.error(error); }
+  }, [getTargetMaterials, settings, preserveOriginalColor, onUpdate]);
+
   const applyTextureSet = useCallback(async (textureInfo) => {
     setLoadingTextures(true);
     setCurrentTextureSet(textureInfo);
@@ -446,889 +421,225 @@ function PBRTexturePanel({
     const loadedTextures = {};
 
     try {
-      // Load all textures from the set
-      const loadPromises = Object.entries(textureInfo.files || {}).map(async ([type, filename]) => {
-        const url = `${textureInfo.path}/${filename}`;
-        
-        return new Promise((resolve) => {
-          textureLoader.load(
-            url,
-            (texture) => {
-              texture.wrapS = THREE.RepeatWrapping;
-              texture.wrapT = THREE.RepeatWrapping;
-              texture.flipY = false;
-              
-              // Set correct color space
-              if (type === 'map' || type === 'emissiveMap') {
-                texture.colorSpace = THREE.SRGBColorSpace;
-              } else {
-                texture.colorSpace = THREE.LinearSRGBColorSpace;
-              }
-              
-              loadedTextures[type] = texture;
-              resolve({ type, texture });
-            },
-            undefined,
-            (error) => {
-              console.warn(`Failed to load texture: ${url}`, error);
-              resolve({ type, texture: null });
-            }
-          );
-        });
-      });
+      let entries;
+      if (textureInfo.isCustom) {
+         entries = Object.entries(textureInfo.customFiles || {});
+      } else {
+         entries = Object.entries(textureInfo.files || {});
+      }
 
-      await Promise.all(loadPromises);
+      for (const [type, fileInfo] of entries) {
+        const url = typeof fileInfo === 'string' ? fileInfo : fileInfo.url;
+        try {
+          const texture = await loadTexture(url);
+          if (type === 'map' || type === 'emissiveMap') texture.colorSpace = THREE.SRGBColorSpace;
+          else texture.colorSpace = THREE.LinearSRGBColorSpace;
+          loadedTextures[type] = texture;
+        } catch (err) { console.warn(`Skipped ${type}`); }
+      }
 
-      // Apply textures to all target materials
       targetMaterials.forEach(mat => {
         Object.entries(loadedTextures).forEach(([type, texture]) => {
-          if (!texture) return;
-
-          const texClone = texture.clone();
-          texClone.needsUpdate = true;
-
-          switch (type) {
-            case 'map':
-              mat.map = texClone;
-              if (!preserveOriginalColor) {
-                mat.color = new THREE.Color(0xffffff);
-              }
-              break;
-            case 'normalMap':
-              mat.normalMap = texClone;
-              mat.normalScale = new THREE.Vector2(settings.normalScale, settings.normalScale);
-              break;
-            case 'roughnessMap':
-              mat.roughnessMap = texClone;
-              break;
-            case 'metalnessMap':
-              mat.metalnessMap = texClone;
-              break;
-            case 'aoMap':
-              mat.aoMap = texClone;
-              mat.aoMapIntensity = settings.aoMapIntensity;
-              break;
-            case 'displacementMap':
-              mat.displacementMap = texClone;
-              mat.displacementScale = settings.displacementScale;
-              break;
-            case 'emissiveMap':
-              mat.emissiveMap = texClone;
-              break;
-            case 'alphaMap':
-              mat.alphaMap = texClone;
-              mat.transparent = true;
-              break;
-            default:
-              break;
-          }
-
-          mat.needsUpdate = true;
+          applyTextureToMaterial(mat, type, texture.clone(), settings, preserveOriginalColor);
         });
       });
 
-      // Update local state
       setTextures(prev => ({
         ...prev,
-        ...Object.fromEntries(
-          Object.entries(loadedTextures).map(([type, texture]) => [
-            type,
-            texture ? { texture, url: `${textureInfo.path}/${textureInfo.files[type]}` } : null
-          ])
-        )
+        ...Object.fromEntries(Object.entries(loadedTextures).map(([type, texture]) => [type, { texture, url: 'loaded' }]))
       }));
 
       onUpdate?.();
-    } catch (error) {
-      console.error('Error applying texture set:', error);
-    }
-
+    } catch (error) { console.error(error); }
     setLoadingTextures(false);
     setShowLibrary(false);
-  }, [getTargetMaterials, settings, onUpdate, textureLoader, preserveOriginalColor]);
+  }, [getTargetMaterials, settings, onUpdate, preserveOriginalColor]);
 
-  // Remove texture
   const removeTexture = useCallback((type) => {
-    if (textures[type]?.texture) {
-      textures[type].texture.dispose();
-    }
-    
-    const targetMaterials = getTargetMaterials();
-    
-    targetMaterials.forEach(mat => {
+    if (textures[type]?.texture) textures[type].texture.dispose();
+    getTargetMaterials().forEach(mat => {
       mat[type] = null;
-      
-      if (type === 'map' && preserveOriginalColor) {
-        if (!isGlobalMode && material) {
-          mat.color = originalColor.clone();
-        }
-      }
-      
+      if (type === 'map' && preserveOriginalColor && !isGlobalMode && material) mat.color = new THREE.Color(material.color); 
       mat.needsUpdate = true;
     });
-    
     setTextures(prev => ({ ...prev, [type]: null }));
     onUpdate?.();
-  }, [getTargetMaterials, textures, onUpdate, originalColor, preserveOriginalColor, isGlobalMode, material]);
+  }, [getTargetMaterials, textures, onUpdate, preserveOriginalColor, isGlobalMode, material]);
 
-  // Handle setting change
   const handleSettingChange = useCallback((setting, value) => {
     setSettings(prev => ({ ...prev, [setting]: value }));
-    
-    const targetMaterials = getTargetMaterials();
-    
-    targetMaterials.forEach(mat => {
-      switch (setting) {
-        case 'color':
-          if (!preserveOriginalColor) {
-            mat.color = new THREE.Color(value);
-          }
-          break;
-        case 'metalness':
-          mat.metalness = value;
-          break;
-        case 'roughness':
-          mat.roughness = value;
-          break;
-        case 'normalScale':
-          if (mat.normalScale) {
-            mat.normalScale = new THREE.Vector2(value, value);
-          }
-          break;
-        case 'displacementScale':
-          mat.displacementScale = value;
-          break;
-        case 'aoMapIntensity':
-          mat.aoMapIntensity = value;
-          break;
-        case 'emissive':
-          mat.emissive = new THREE.Color(value);
-          break;
-        case 'emissiveIntensity':
-          mat.emissiveIntensity = value;
-          break;
-        case 'opacity':
-          mat.opacity = value;
-          mat.transparent = value < 1;
-          break;
-        case 'envMapIntensity':
-          mat.envMapIntensity = value;
-          break;
-        default:
-          break;
-      }
-      
-      mat.needsUpdate = true;
+    getTargetMaterials().forEach(mat => {
+        if(setting === 'color' && !preserveOriginalColor) mat.color = new THREE.Color(value);
+        if(setting === 'metalness') mat.metalness = value;
+        if(setting === 'roughness') mat.roughness = value;
+        if(setting === 'normalScale' && mat.normalMap) mat.normalScale = new THREE.Vector2(value, value);
+        if(setting === 'displacementScale') mat.displacementScale = value;
+        if(setting === 'aoMapIntensity') mat.aoMapIntensity = value;
+        if(setting === 'opacity') { mat.opacity = value; mat.transparent = value < 1; }
+        if(setting === 'emissive') mat.emissive = new THREE.Color(value);
+        if(setting === 'emissiveIntensity') mat.emissiveIntensity = value;
+        
+        // UPDATE TEXTURE REPEAT ON ALL MAPS
+        if(setting === 'repeat') {
+            ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'displacementMap', 'emissiveMap', 'alphaMap'].forEach(mapType => {
+                if(mat[mapType]) {
+                    mat[mapType].repeat.set(value, value);
+                }
+            });
+        }
+
+        mat.needsUpdate = true;
     });
-    
     onUpdate?.();
   }, [getTargetMaterials, onUpdate, preserveOriginalColor]);
 
-  // Handle preserve color toggle
-  const handlePreserveColorToggle = useCallback((preserve) => {
-    setPreserveOriginalColor(preserve);
-    
-    if (preserve && !isGlobalMode && material) {
-      material.color = originalColor.clone();
-      setSettings(prev => ({ ...prev, color: `#${originalColor.getHexString()}` }));
-      material.needsUpdate = true;
-    }
-    
-    onUpdate?.();
-  }, [material, originalColor, onUpdate, isGlobalMode]);
-
-  // Apply preset
-  const applyPreset = useCallback((preset) => {
-    const targetMaterials = getTargetMaterials();
-    
-    targetMaterials.forEach(mat => {
-      mat.metalness = preset.metalness;
-      mat.roughness = preset.roughness;
-      
-      if (preset.opacity !== undefined) {
-        mat.opacity = preset.opacity;
-        mat.transparent = preset.opacity < 1;
-      }
-      
-      if (preset.color && !preserveOriginalColor) {
-        mat.color = new THREE.Color(preset.color);
-      }
-      
-      mat.needsUpdate = true;
-    });
-    
-    setSettings(prev => ({
-      ...prev,
-      metalness: preset.metalness,
-      roughness: preset.roughness,
-      ...(preset.opacity !== undefined && { opacity: preset.opacity }),
-      ...(preset.color && !preserveOriginalColor && { color: preset.color }),
-    }));
-    
-    onUpdate?.();
-  }, [getTargetMaterials, onUpdate, preserveOriginalColor]);
-
-  // Reset settings
-  const resetSettings = useCallback(() => {
-    const targetMaterials = getTargetMaterials();
-    
-    targetMaterials.forEach(mat => {
-      mat.metalness = 0;
-      mat.roughness = 0.5;
-      mat.opacity = 1;
-      mat.transparent = false;
-      mat.emissive = new THREE.Color(0x000000);
-      mat.emissiveIntensity = 1;
-      mat.envMapIntensity = 1;
-      mat.needsUpdate = true;
-    });
-    
-    setSettings({
-      color: material?.color ? `#${material.color.getHexString()}` : "#ffffff",
-      metalness: 0,
-      roughness: 0.5,
-      normalScale: 1,
-      displacementScale: 0.1,
-      aoMapIntensity: 1,
-      emissive: "#000000",
-      emissiveIntensity: 1,
-      opacity: 1,
-      envMapIntensity: 1,
-    });
-    
-    handlePreserveColorToggle(true);
-    setCurrentTextureSet(null);
-    onUpdate?.();
-  }, [getTargetMaterials, material, handlePreserveColorToggle, onUpdate]);
-
-  // Clear all textures
-  const clearAllTextures = useCallback(() => {
-    Object.keys(textures).forEach(key => {
-      if (textures[key]) {
-        removeTexture(key);
-      }
-    });
-    setCurrentTextureSet(null);
-  }, [textures, removeTexture]);
-
-  const handleExpandToggle = () => {
-    if (onExpandedChange) {
-      onExpandedChange(!expanded);
-    } else {
-      setInternalExpanded(!internalExpanded);
-    }
-  };
-
-  const loadedTextureCount = Object.values(textures).filter(t => t !== null).length;
-
   // ============================================
-  // GLOBAL MODE UI
+  // RENDER CONTENT
   // ============================================
-  if (isGlobalMode) {
-    return (
-      <div className="space-y-4">
-        {/* Texture Library Button */}
-        <button
-          onClick={() => setShowLibrary(true)}
-          className="w-full p-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-xl hover:from-blue-500/30 hover:to-purple-500/30 transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-              <span className="text-2xl">🎨</span>
-            </div>
-            <div className="flex-1 text-left">
-              <h3 className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">
-                Open Texture Library
-              </h3>
-              <p className="text-xs text-gray-400">
-                Browse and apply PBR texture sets
-              </p>
-            </div>
-            <svg className="w-5 h-5 text-gray-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
-        </button>
-
-        {/* Current Texture Set Info */}
-        {currentTextureSet && (
-          <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">✅</span>
-                <div>
-                  <p className="text-sm text-green-400 font-medium">{currentTextureSet.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {Object.keys(currentTextureSet.files || {}).length} maps applied
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={clearAllTextures}
-                className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 rounded text-xs text-red-400"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Loading Indicator */}
-        {loadingTextures && (
-          <div className="flex items-center justify-center p-4 bg-gray-800/50 rounded-lg">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-3"></div>
-            <span className="text-sm text-gray-400">Loading textures...</span>
-          </div>
-        )}
-
-        {/* Preserve Original Color Toggle */}
-        <div className="p-3 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🎨</span>
-              <div>
-                <span className="text-sm text-gray-300">Preserve Original Colors</span>
-                <p className="text-[10px] text-gray-500">Keep model's original material colors</p>
-              </div>
-            </div>
-            <button
-              onClick={() => handlePreserveColorToggle(!preserveOriginalColor)}
-              className={`w-11 h-6 rounded-full transition-all ${
-                preserveOriginalColor ? "bg-purple-500" : "bg-gray-600"
-              }`}
+  const renderMainContent = () => (
+    <div className="space-y-4">
+        {/* 1. Library Button & Status */}
+        <div className="space-y-2">
+            <button 
+                onClick={() => setShowLibrary(true)} 
+                className="w-full p-2.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-lg text-white flex items-center justify-between group transition-all hover:from-blue-500/30 hover:to-purple-500/30"
             >
-              <div className={`w-4 h-4 rounded-full bg-white shadow-md ml-1 transition-transform ${
-                preserveOriginalColor ? "translate-x-5" : ""
-              }`} />
-            </button>
-          </div>
-        </div>
-
-        {/* PBR Properties */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-            <span>⚙️</span>
-            PBR Properties (All Materials)
-          </h4>
-          
-          {/* Base Color */}
-          <div className={`flex items-center justify-between ${preserveOriginalColor ? 'opacity-50' : ''}`}>
-            <label className="text-xs text-gray-400">Base Color</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={settings.color}
-                onChange={(e) => handleSettingChange('color', e.target.value)}
-                disabled={preserveOriginalColor}
-                className={`w-8 h-8 rounded cursor-pointer border border-gray-600 ${
-                  preserveOriginalColor ? 'cursor-not-allowed' : ''
-                }`}
-              />
-              <span className="text-xs text-gray-500 font-mono w-16">{settings.color}</span>
-            </div>
-          </div>
-
-          {/* Metalness */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-gray-400 flex items-center gap-1">
-                <span>🔩</span> Metalness
-              </label>
-              <span className="text-xs text-gray-500 font-mono">{settings.metalness.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={settings.metalness}
-              onChange={(e) => handleSettingChange('metalness', parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-            />
-          </div>
-
-          {/* Roughness */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-gray-400 flex items-center gap-1">
-                <span>✨</span> Roughness
-              </label>
-              <span className="text-xs text-gray-500 font-mono">{settings.roughness.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={settings.roughness}
-              onChange={(e) => handleSettingChange('roughness', parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-            />
-          </div>
-
-          {/* Opacity */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-gray-400 flex items-center gap-1">
-                <span>👻</span> Opacity
-              </label>
-              <span className="text-xs text-gray-500 font-mono">{settings.opacity.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={settings.opacity}
-              onChange={(e) => handleSettingChange('opacity', parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-500"
-            />
-          </div>
-
-          {/* Env Map Intensity */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-gray-400 flex items-center gap-1">
-                <span>🌍</span> Env Intensity
-              </label>
-              <span className="text-xs text-gray-500 font-mono">{settings.envMapIntensity.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="3"
-              step="0.1"
-              value={settings.envMapIntensity}
-              onChange={(e) => handleSettingChange('envMapIntensity', parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-            />
-          </div>
-        </div>
-
-        {/* Emissive Settings */}
-        <div className="space-y-3 pt-2 border-t border-gray-700/50">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-            <span>💡</span>
-            Emissive (Glow)
-          </h4>
-          
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-gray-400">Emissive Color</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={settings.emissive}
-                onChange={(e) => handleSettingChange('emissive', e.target.value)}
-                className="w-8 h-8 rounded cursor-pointer border border-gray-600"
-              />
-              <span className="text-xs text-gray-500 font-mono w-16">{settings.emissive}</span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-gray-400">Intensity</label>
-              <span className="text-xs text-gray-500 font-mono">{settings.emissiveIntensity.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="5"
-              step="0.1"
-              value={settings.emissiveIntensity}
-              onChange={(e) => handleSettingChange('emissiveIntensity', parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
-            />
-          </div>
-        </div>
-
-        {/* Texture-specific Settings */}
-        {(textures.normalMap || textures.displacementMap || textures.aoMap) && (
-          <div className="space-y-3 pt-2 border-t border-gray-700/50">
-            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Texture Settings
-            </h4>
-
-            {textures.normalMap && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs text-gray-400">Normal Scale</label>
-                  <span className="text-xs text-gray-500 font-mono">{settings.normalScale.toFixed(2)}</span>
+                <div className="flex items-center gap-2">
+                    <span className="text-lg">🎨</span>
+                    <div className="text-left">
+                        <div className="text-xs font-bold text-blue-100 group-hover:text-white">Texture Library</div>
+                        <div className="text-[10px] text-blue-300/70">Browse & Apply Sets</div>
+                    </div>
                 </div>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.05"
-                  value={settings.normalScale}
-                  onChange={(e) => handleSettingChange('normalScale', parseFloat(e.target.value))}
-                  className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                />
-              </div>
+                <svg className="w-4 h-4 text-blue-300 group-hover:text-white group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </button>
+
+            {currentTextureSet && (
+                <div className="flex items-center justify-between px-2 py-1.5 bg-green-500/10 border border-green-500/20 rounded text-[10px]">
+                    <span className="text-green-400 truncate flex-1 mr-2">✓ {currentTextureSet.name}</span>
+                    <button onClick={() => { 
+                        Object.keys(textures).forEach(t => removeTexture(t)); 
+                        setCurrentTextureSet(null); 
+                    }} className="text-red-400 hover:text-red-300">Clear</button>
+                </div>
+            )}
+        </div>
+
+        {/* 2. Individual Uploads (HIDDEN WHEN SET APPLIED) */}
+        {!currentTextureSet && (
+            <div className="space-y-1.5">
+                <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Maps</h4>
+                <div className="grid grid-cols-2 gap-1.5">
+                    {TEXTURE_TYPES.map(t => (
+                        <TextureSlot key={t.key} type={t.key} typeInfo={t} texture={textures[t.key]} onUpload={handleTextureUpload} onRemove={removeTexture} />
+                    ))}
+                </div>
+            </div>
+        )}
+
+        {/* 3. Sliders / Adjustment Bars */}
+        <div className="space-y-3 pt-2 border-t border-gray-700/50">
+            <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Properties</h4>
+            
+            {/* Texture Scale Slider (REPEAT) */}
+            <div className="space-y-1">
+                 <div className="flex justify-between text-[10px] text-blue-300"><span>Texture Scale</span><span>{settings.repeat.toFixed(1)}x</span></div>
+                 <input type="range" min="0.1" max="10" step="0.1" value={settings.repeat} onChange={e=>handleSettingChange('repeat', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-cyan-500" />
+            </div>
+
+            {/* Standard PBR Sliders */}
+            <div className="space-y-1">
+                 <div className="flex justify-between text-[10px] text-gray-400"><span>Metalness</span><span>{settings.metalness.toFixed(2)}</span></div>
+                 <input type="range" min="0" max="1" step="0.01" value={settings.metalness} onChange={e=>handleSettingChange('metalness', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-blue-500" />
+            </div>
+            
+            <div className="space-y-1">
+                 <div className="flex justify-between text-[10px] text-gray-400"><span>Roughness</span><span>{settings.roughness.toFixed(2)}</span></div>
+                 <input type="range" min="0" max="1" step="0.01" value={settings.roughness} onChange={e=>handleSettingChange('roughness', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-yellow-500" />
+            </div>
+
+            {/* Conditional Sliders (Only show if texture is present) */}
+            {textures.normalMap && (
+                <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-purple-400"><span>Normal Scale</span><span>{settings.normalScale.toFixed(1)}</span></div>
+                    <input type="range" min="-2" max="2" step="0.1" value={settings.normalScale} onChange={e=>handleSettingChange('normalScale', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-purple-500" />
+                </div>
             )}
 
             {textures.displacementMap && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs text-gray-400">Displacement Scale</label>
-                  <span className="text-xs text-gray-500 font-mono">{settings.displacementScale.toFixed(2)}</span>
+                <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-green-400"><span>Displacement</span><span>{settings.displacementScale.toFixed(2)}</span></div>
+                    <input type="range" min="0" max="0.5" step="0.01" value={settings.displacementScale} onChange={e=>handleSettingChange('displacementScale', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-green-500" />
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={settings.displacementScale}
-                  onChange={(e) => handleSettingChange('displacementScale', parseFloat(e.target.value))}
-                  className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
-                />
-              </div>
             )}
 
             {textures.aoMap && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs text-gray-400">AO Intensity</label>
-                  <span className="text-xs text-gray-500 font-mono">{settings.aoMapIntensity.toFixed(2)}</span>
+                <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-gray-300"><span>AO Intensity</span><span>{settings.aoMapIntensity.toFixed(1)}</span></div>
+                    <input type="range" min="0" max="2" step="0.1" value={settings.aoMapIntensity} onChange={e=>handleSettingChange('aoMapIntensity', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-gray-500" />
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.05"
-                  value={settings.aoMapIntensity}
-                  onChange={(e) => handleSettingChange('aoMapIntensity', parseFloat(e.target.value))}
-                  className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-                />
-              </div>
             )}
-          </div>
-        )}
 
-        {/* Presets */}
-        <div className="pt-2 border-t border-gray-700/50">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-            Quick Presets
-          </h4>
-          <div className="grid grid-cols-4 gap-1.5">
-            {PBR_PRESETS.map((preset) => (
-              <button
-                key={preset.name}
-                onClick={() => applyPreset(preset)}
-                className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-700/30 hover:bg-gray-700/50 border border-transparent hover:border-gray-600 transition-all"
-                title={`${preset.name}: M=${preset.metalness}, R=${preset.roughness}`}
-              >
-                <span className="text-base">{preset.icon}</span>
-                <span className="text-[9px] text-gray-400 mt-0.5">{preset.name}</span>
-              </button>
-            ))}
-          </div>
+            {textures.emissiveMap && (
+                <div className="space-y-2 p-2 bg-gray-700/20 rounded-lg">
+                    <div className="flex items-center justify-between">
+                         <span className="text-[10px] text-orange-400">Emissive Color</span>
+                         <input type="color" value={settings.emissive} onChange={e=>handleSettingChange('emissive', e.target.value)} className="w-5 h-5 rounded cursor-pointer border-none" />
+                    </div>
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] text-orange-400"><span>Intensity</span><span>{settings.emissiveIntensity.toFixed(1)}</span></div>
+                        <input type="range" min="0" max="5" step="0.1" value={settings.emissiveIntensity} onChange={e=>handleSettingChange('emissiveIntensity', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg accent-orange-500" />
+                    </div>
+                </div>
+            )}
+
+            {/* Color Toggle */}
+            <div className="flex items-center justify-between pt-1">
+                 <span className="text-[10px] text-gray-400">Preserve Orig. Color</span>
+                 <button onClick={() => {
+                     setPreserveOriginalColor(!preserveOriginalColor);
+                     if(!preserveOriginalColor && !isGlobalMode && material) { material.color = new THREE.Color(originalColor); material.needsUpdate = true; onUpdate?.(); }
+                 }} className={`w-8 h-4 rounded-full relative transition-colors ${preserveOriginalColor ? 'bg-blue-500' : 'bg-gray-600'}`}>
+                    <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${preserveOriginalColor ? 'translate-x-4' : ''}`} />
+                 </button>
+            </div>
         </div>
+    </div>
+  );
 
-        {/* Quick Actions */}
-        <div className="flex gap-2 pt-2 border-t border-gray-700/50">
-          <button
-            onClick={resetSettings}
-            className="flex-1 px-2 py-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg text-xs text-gray-400 transition-colors flex items-center justify-center gap-1"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Reset All
-          </button>
-          <button
-            onClick={clearAllTextures}
-            disabled={loadedTextureCount === 0}
-            className="flex-1 px-2 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-xs text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Clear Textures
-          </button>
-        </div>
-
-        {/* Texture Library Modal */}
-        {showLibrary && (
-          <PBRTextureLibrary
-            onSelectTexture={applyTextureSet}
-            onClose={() => setShowLibrary(false)}
-          />
-        )}
-      </div>
-    );
-  }
-
-  // ============================================
-  // INDIVIDUAL MATERIAL PANEL (Collapsible)
-  // ============================================
+  // Wrapper
   return (
-    <div className="border border-gray-700/50 rounded-lg overflow-hidden bg-gray-800/30">
-      {/* Header */}
-      <button
-        onClick={handleExpandToggle}
-        className="w-full flex items-center justify-between p-3 hover:bg-gray-700/30 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <div 
-            className="w-6 h-6 rounded border border-gray-600 flex-shrink-0"
-            style={{ 
-              backgroundColor: settings.color,
-              background: hasVertexColors 
-                ? 'linear-gradient(135deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6)'
-                : settings.color
-            }}
-          />
-          <span className="text-sm font-medium text-gray-200 truncate max-w-[140px]">
-            {materialName}
-          </span>
-          {loadedTextureCount > 0 && (
-            <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">
-              {loadedTextureCount} tex
-            </span>
-          )}
-          {currentTextureSet && (
-            <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-[10px] truncate max-w-[60px]">
-              {currentTextureSet.name}
-            </span>
-          )}
-        </div>
-        <svg 
-          className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
+    <div className={isGlobalMode ? "" : "border border-gray-700/50 rounded-lg overflow-hidden bg-gray-800/30"}>
+      {!isGlobalMode && (
+        <button 
+            onClick={() => onExpandedChange ? onExpandedChange(!expanded) : setInternalExpanded(!internalExpanded)} 
+            className="w-full flex items-center justify-between p-3 hover:bg-gray-700/30 transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {/* Expanded Content */}
-      {expanded && (
-        <div className="p-3 pt-0 space-y-4 border-t border-gray-700/50">
-          {/* Texture Library Button */}
-          <button
-            onClick={() => setShowLibrary(true)}
-            className="w-full p-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg hover:from-blue-500/20 hover:to-purple-500/20 transition-all"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🎨</span>
-              <div className="flex-1 text-left">
-                <p className="text-xs font-medium text-white">Browse Texture Library</p>
-                <p className="text-[10px] text-gray-500">Apply complete PBR texture sets</p>
-              </div>
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </div>
-          </button>
-
-          {/* Current texture set indicator */}
-          {currentTextureSet && (
-            <div className="p-2 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center justify-between">
-              <span className="text-xs text-green-400">✅ {currentTextureSet.name}</span>
-              <button
-                onClick={clearAllTextures}
-                className="text-[10px] text-red-400 hover:text-red-300"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-
-          {/* Loading Indicator */}
-          {loadingTextures && (
-            <div className="flex items-center justify-center p-3 bg-gray-800/50 rounded-lg">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-2"></div>
-              <span className="text-xs text-gray-400">Loading...</span>
-            </div>
-          )}
-
-          {/* Preserve Original Color Toggle */}
-          <div className="p-2.5 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">🎨</span>
-                <span className="text-xs text-gray-300">Preserve Color</span>
-              </div>
-              <button
-                onClick={() => handlePreserveColorToggle(!preserveOriginalColor)}
-                className={`w-10 h-5 rounded-full transition-all ${
-                  preserveOriginalColor ? "bg-purple-500" : "bg-gray-600"
-                }`}
-              >
-                <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-md ml-0.5 transition-transform ${
-                  preserveOriginalColor ? "translate-x-5" : ""
-                }`} />
-              </button>
-            </div>
-          </div>
-
-          {/* PBR Properties */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              PBR Properties
-            </h4>
-            
-            {/* Metalness */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-gray-400">Metalness</label>
-                <span className="text-[10px] text-gray-500 font-mono">{settings.metalness.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={settings.metalness}
-                onChange={(e) => handleSettingChange('metalness', parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-            </div>
-
-            {/* Roughness */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-gray-400">Roughness</label>
-                <span className="text-[10px] text-gray-500 font-mono">{settings.roughness.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={settings.roughness}
-                onChange={(e) => handleSettingChange('roughness', parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-              />
-            </div>
-
-            {/* Opacity */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-gray-400">Opacity</label>
-                <span className="text-[10px] text-gray-500 font-mono">{settings.opacity.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={settings.opacity}
-                onChange={(e) => handleSettingChange('opacity', parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-500"
-              />
-            </div>
-          </div>
-
-          {/* Texture-specific Settings */}
-          {(textures.normalMap || textures.displacementMap || textures.aoMap) && (
-            <div className="space-y-3 pt-2 border-t border-gray-700/50">
-              <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                Texture Settings
-              </h4>
-
-              {textures.normalMap && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-gray-400">Normal Scale</label>
-                    <span className="text-[10px] text-gray-500 font-mono">{settings.normalScale.toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-2"
-                    max="2"
-                    step="0.05"
-                    value={settings.normalScale}
-                    onChange={(e) => handleSettingChange('normalScale', parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                </div>
-              )}
-
-              {textures.displacementMap && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-gray-400">Displacement</label>
-                    <span className="text-[10px] text-gray-500 font-mono">{settings.displacementScale.toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={settings.displacementScale}
-                    onChange={(e) => handleSettingChange('displacementScale', parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
-                  />
-                </div>
-              )}
-
-              {textures.aoMap && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-gray-400">AO Intensity</label>
-                    <span className="text-[10px] text-gray-500 font-mono">{settings.aoMapIntensity.toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    value={settings.aoMapIntensity}
-                    onChange={(e) => handleSettingChange('aoMapIntensity', parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Presets */}
-          <div className="pt-2 border-t border-gray-700/50">
-            <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              Presets
-            </h4>
-            <div className="flex flex-wrap gap-1">
-              {PBR_PRESETS.slice(0, 8).map((preset) => (
-                <button
-                  key={preset.name}
-                  onClick={() => applyPreset(preset)}
-                  className="px-2 py-1 rounded bg-gray-700/30 hover:bg-gray-700/50 text-[10px] text-gray-400 transition-all"
-                  title={preset.name}
-                >
-                  {preset.icon}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex gap-2 pt-2 border-t border-gray-700/50">
-            <button
-              onClick={resetSettings}
-              className="flex-1 px-2 py-1.5 bg-gray-700/50 hover:bg-gray-700 rounded text-[10px] text-gray-400 transition-colors"
-            >
-              Reset
-            </button>
-            <button
-              onClick={clearAllTextures}
-              disabled={loadedTextureCount === 0}
-              className="flex-1 px-2 py-1.5 bg-red-500/20 hover:bg-red-500/30 rounded text-[10px] text-red-400 transition-colors disabled:opacity-50"
-            >
-              Clear Tex
-            </button>
-          </div>
-        </div>
+           <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-sm border border-white/10" style={{backgroundColor: settings.color}}></div>
+                <span className="text-sm font-medium text-gray-200 truncate max-w-[120px]">{materialName}</span>
+           </div>
+           <svg className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
       )}
 
-      {/* Texture Library Modal */}
-      {showLibrary && (
-        <PBRTextureLibrary
-          onSelectTexture={applyTextureSet}
-          onClose={() => setShowLibrary(false)}
-        />
+      {(isGlobalMode || expanded) && (
+        <div className={isGlobalMode ? "" : "p-3 pt-0 border-t border-gray-700/50"}>
+            {/* SWITCH VIEW LOGIC */}
+            {showLibrary ? (
+                <div className={isGlobalMode ? "" : "pt-2"}>
+                    <PBRTextureLibrary onSelectTexture={applyTextureSet} onBack={() => setShowLibrary(false)} />
+                </div>
+            ) : (
+                <div className={isGlobalMode ? "" : "pt-2"}>
+                     {loadingTextures ? (
+                         <div className="flex items-center justify-center py-8 text-xs text-gray-400">
+                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div> Loading...
+                         </div>
+                     ) : renderMainContent()}
+                </div>
+            )}
+        </div>
       )}
     </div>
   );

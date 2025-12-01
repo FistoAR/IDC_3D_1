@@ -3,23 +3,13 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import * as THREE from "three";
 import PBRTexturePanel from "./PBRTexturePanel";
 import GradientColorPanel from "./GradientColorPanel";
+import SolidColorPanel from "./SolidColorPanel";
 
 const MATERIAL_MODES = {
-  original: {
-    name: 'Original',
-    icon: '🎨',
-    description: 'Keep original colors'
-  },
-  pbr: {
-    name: 'PBR',
-    icon: '🖼️',
-    description: 'Apply PBR textures'
-  },
-  gradient: {
-    name: 'Gradient',
-    icon: '🌈',
-    description: 'Apply gradient colors'
-  }
+  original: { name: 'Original', icon: '🎨', description: 'Keep original colors' },
+  solid: { name: 'Solid', icon: '🔵', description: 'Apply solid color' },
+  gradient: { name: 'Gradient', icon: '🌈', description: 'Apply gradient colors' },
+  pbr: { name: 'PBR', icon: '🖼️', description: 'Apply PBR textures' }
 };
 
 const APPLY_MODES = {
@@ -27,7 +17,7 @@ const APPLY_MODES = {
   individual: { name: 'Individual', icon: '🎯' }
 };
 
-function MaterialsList({ model, onMaterialUpdate }) {
+function MaterialsList({ model, onMaterialUpdate, onFocusMaterial }) {
   const [materials, setMaterials] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedSection, setExpandedSection] = useState(true);
@@ -35,27 +25,25 @@ function MaterialsList({ model, onMaterialUpdate }) {
   const [applyMode, setApplyMode] = useState('all');
   const [selectedMaterialId, setSelectedMaterialId] = useState(null);
   const [originalMaterials, setOriginalMaterials] = useState(new Map());
+  const [globalOpacity, setGlobalOpacity] = useState(1.0);
 
-  // Store original material states
+  // Initialize materials map
   useEffect(() => {
-    if (!model) {
-      setMaterials([]);
-      setOriginalMaterials(new Map());
-      return;
-    }
+    if (!model) { setMaterials([]); setOriginalMaterials(new Map()); return; }
 
     const materialMap = new Map();
     const originals = new Map();
-    
+
     model.traverse((child) => {
       if (child.isMesh && child.material) {
         const mats = Array.isArray(child.material) ? child.material : [child.material];
-        
+
         mats.forEach((mat, index) => {
           const originalColor = mat.color ? mat.color.clone() : new THREE.Color(0x888888);
-          const hasVertexColors = mat.vertexColors === true || 
-                                   (child.geometry && child.geometry.attributes.color);
-          
+          const hasVertexColors =
+            mat.vertexColors === true ||
+            (child.geometry && child.geometry.attributes.color);
+
           // Store original state
           originals.set(mat.uuid, {
             color: originalColor.clone(),
@@ -68,10 +56,11 @@ function MaterialsList({ model, onMaterialUpdate }) {
             opacity: mat.opacity ?? 1,
           });
 
-          // Convert to MeshStandardMaterial if needed
-          if (!(mat instanceof THREE.MeshStandardMaterial) && 
-              !(mat instanceof THREE.MeshPhysicalMaterial)) {
-            
+          // Convert to PBR material if needed
+          if (
+            !(mat instanceof THREE.MeshStandardMaterial) &&
+            !(mat instanceof THREE.MeshPhysicalMaterial)
+          ) {
             const newMat = new THREE.MeshStandardMaterial({
               color: originalColor,
               metalness: 0.0,
@@ -79,19 +68,19 @@ function MaterialsList({ model, onMaterialUpdate }) {
               side: THREE.DoubleSide,
               vertexColors: hasVertexColors,
             });
-            
+
             if (mat.map) newMat.map = mat.map;
             if (mat.opacity !== undefined) {
               newMat.opacity = mat.opacity;
               newMat.transparent = mat.opacity < 1;
             }
-            
+
             if (Array.isArray(child.material)) {
               child.material[index] = newMat;
             } else {
               child.material = newMat;
             }
-            
+
             originals.set(newMat.uuid, {
               color: originalColor.clone(),
               map: null,
@@ -102,9 +91,9 @@ function MaterialsList({ model, onMaterialUpdate }) {
               emissiveIntensity: 1,
               opacity: 1,
             });
-            
+
             mat.dispose();
-            
+
             materialMap.set(newMat.uuid, {
               material: newMat,
               name: mat.name || `Material_${materialMap.size + 1}`,
@@ -114,9 +103,9 @@ function MaterialsList({ model, onMaterialUpdate }) {
               hasVertexColors: hasVertexColors,
             });
           } else {
-            const key = mat.uuid;
-            if (!materialMap.has(key)) {
-              materialMap.set(key, {
+            // Already Standard/Physical
+            if (!materialMap.has(mat.uuid)) {
+              materialMap.set(mat.uuid, {
                 material: mat,
                 name: mat.name || `Material_${materialMap.size + 1}`,
                 meshName: child.name,
@@ -133,14 +122,60 @@ function MaterialsList({ model, onMaterialUpdate }) {
     const materialsList = Array.from(materialMap.values());
     setMaterials(materialsList);
     setOriginalMaterials(originals);
-    
-    // Select first material by default
+
     if (materialsList.length > 0 && !selectedMaterialId) {
       setSelectedMaterialId(materialsList[0].material.uuid);
     }
   }, [model]);
 
-  // Restore original materials
+  // Blink highlight for selected material
+  useEffect(() => {
+    if (!selectedMaterialId || !materials.length) return;
+
+    const item = materials.find((m) => m.material.uuid === selectedMaterialId);
+    if (!item || !item.material) return;
+
+    const mat = item.material;
+
+    const origEmissive = mat.emissive
+      ? mat.emissive.clone()
+      : new THREE.Color(0x000000);
+    const origIntensity = mat.emissiveIntensity || 0;
+
+    const blinkColor = new THREE.Color(0x00ffff); // cyan
+    const blinkIntensity = 0.6;
+    const blinkDuration = 150;
+    const maxBlinks = 2;
+    let count = 0;
+
+    const blinkOn = () => {
+      if (count >= maxBlinks) return;
+      mat.emissive = blinkColor;
+      mat.emissiveIntensity = blinkIntensity;
+      onMaterialUpdate?.();
+      setTimeout(blinkOff, blinkDuration);
+    };
+
+    const blinkOff = () => {
+      mat.emissive = origEmissive;
+      mat.emissiveIntensity = origIntensity;
+      onMaterialUpdate?.();
+      count++;
+      if (count < maxBlinks) {
+        setTimeout(blinkOn, blinkDuration);
+      }
+    };
+
+    blinkOn();
+
+    return () => {
+      mat.emissive = origEmissive;
+      mat.emissiveIntensity = origIntensity;
+      onMaterialUpdate?.();
+    };
+  }, [selectedMaterialId, materials, onMaterialUpdate]);
+
+  // Restore originals
   const restoreOriginals = useCallback(() => {
     materials.forEach(({ material }) => {
       const original = originalMaterials.get(material.uuid);
@@ -156,41 +191,68 @@ function MaterialsList({ model, onMaterialUpdate }) {
         material.needsUpdate = true;
       }
     });
+    setGlobalOpacity(1.0);
     onMaterialUpdate?.();
   }, [materials, originalMaterials, onMaterialUpdate]);
 
-  // Handle mode change
   const handleModeChange = (mode) => {
-    if (mode === 'original') {
+    if (mode === "original") {
       restoreOriginals();
     }
     setMaterialMode(mode);
   };
 
-  // Filter materials by search
+  const handleOpacityChange = (value) => {
+    const val = parseFloat(value);
+    setGlobalOpacity(val);
+
+    const targets =
+      applyMode === "all"
+        ? materials.map((m) => m.material)
+        : selectedMaterialId
+        ? [materials.find((m) => m.material.uuid === selectedMaterialId)?.material]
+        : [];
+
+    targets.forEach((mat) => {
+      if (mat) {
+        mat.opacity = val;
+        mat.transparent = val < 1.0;
+        mat.needsUpdate = true;
+      }
+    });
+    onMaterialUpdate?.();
+  };
+
+  // Selection helper: set selected material + ask viewer to focus
+  const handleSelectMaterial = (uuid) => {
+    setSelectedMaterialId(uuid);
+    onFocusMaterial?.(uuid);
+  };
+
   const filteredMaterials = useMemo(() => {
     if (!searchTerm) return materials;
     const term = searchTerm.toLowerCase();
     return materials.filter(
-      m => m.name.toLowerCase().includes(term) || 
-           m.meshName?.toLowerCase().includes(term)
+      (m) =>
+        m.name.toLowerCase().includes(term) ||
+        m.meshName?.toLowerCase().includes(term)
     );
   }, [materials, searchTerm]);
 
-  // Get selected material
-  const selectedMaterial = useMemo(() => {
-    return materials.find(m => m.material.uuid === selectedMaterialId);
-  }, [materials, selectedMaterialId]);
+  const selectedMaterial = useMemo(
+    () => materials.find((m) => m.material.uuid === selectedMaterialId),
+    [materials, selectedMaterialId]
+  );
 
-  // Get all meshes
-  const allMeshes = useMemo(() => {
-    return materials.map(m => m.mesh).filter(Boolean);
-  }, [materials]);
+  const allMeshes = useMemo(
+    () => materials.map((m) => m.mesh).filter(Boolean),
+    [materials]
+  );
 
-  // Get all materials
-  const allMaterialObjects = useMemo(() => {
-    return materials.map(m => m.material);
-  }, [materials]);
+  const allMaterialObjects = useMemo(
+    () => materials.map((m) => m.material),
+    [materials]
+  );
 
   if (!model) return null;
 
@@ -202,46 +264,67 @@ function MaterialsList({ model, onMaterialUpdate }) {
         className="w-full p-4 pb-2 flex items-center justify-between hover:bg-gray-700/20 transition-colors"
       >
         <h2 className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-2">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+            />
           </svg>
           Materials ({materials.length})
         </h2>
-        <svg 
-          className={`w-4 h-4 text-gray-400 transition-transform ${expandedSection ? 'rotate-180' : ''}`}
-          fill="none" 
-          stroke="currentColor" 
+        <svg
+          className={`w-4 h-4 text-gray-400 transition-transform ${
+            expandedSection ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
           viewBox="0 0 24 24"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
         </svg>
       </button>
 
       {expandedSection && (
         <>
-          {/* Mode Toggle - Original / PBR / Gradient */}
+          {/* Mode Toggle */}
           <div className="px-4 pb-3">
             <div className="flex items-center gap-1 p-1 bg-gray-800/50 rounded-lg">
-              {Object.entries(MATERIAL_MODES).map(([key, { name, icon, description }]) => (
-                <button
-                  key={key}
-                  onClick={() => handleModeChange(key)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-md transition-all ${
-                    materialMode === key
-                      ? 'bg-blue-500 text-white shadow-lg'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
-                  }`}
-                  title={description}
-                >
-                  <span className="text-sm">{icon}</span>
-                  <span className="text-xs font-medium hidden sm:inline">{name}</span>
-                </button>
-              ))}
+              {Object.entries(MATERIAL_MODES).map(
+                ([key, { name, icon, description }]) => (
+                  <button
+                    key={key}
+                    onClick={() => handleModeChange(key)}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-1.5 rounded-md transition-all ${
+                      materialMode === key
+                        ? "bg-blue-500 text-white shadow-lg"
+                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
+                    }`}
+                    title={description}
+                  >
+                    <span className="text-sm">{icon}</span>
+                    <span className="text-[10px] font-medium hidden sm:inline">
+                      {name}
+                    </span>
+                  </button>
+                )
+              )}
             </div>
           </div>
 
-          {/* Apply Mode Toggle - All / Individual (for PBR and Gradient) */}
-          {(materialMode === 'pbr' || materialMode === 'gradient') && materials.length > 1 && (
+          {/* Apply Mode Toggle */}
+          {materials.length > 1 && (
             <div className="px-4 pb-3">
               <div className="flex items-center gap-2 p-2 bg-gray-700/30 rounded-lg">
                 <span className="text-xs text-gray-400">Apply to:</span>
@@ -252,8 +335,8 @@ function MaterialsList({ model, onMaterialUpdate }) {
                       onClick={() => setApplyMode(key)}
                       className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded transition-all text-xs ${
                         applyMode === key
-                          ? 'bg-purple-500 text-white'
-                          : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
+                          ? "bg-purple-500 text-white"
+                          : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
                       }`}
                     >
                       <span>{icon}</span>
@@ -265,10 +348,29 @@ function MaterialsList({ model, onMaterialUpdate }) {
             </div>
           )}
 
-          {/* Mode-specific content */}
-          
+          {/* Opacity */}
+          <div className="px-4 pb-3">
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-400">
+                <span className="flex items-center gap-1">
+                  Opacity {applyMode === "individual" ? "(Selected)" : "(All)"}
+                </span>
+                <span>{(globalOpacity * 100).toFixed(0)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={globalOpacity}
+                onChange={(e) => handleOpacityChange(e.target.value)}
+                className="w-full h-1.5 bg-gray-700 rounded-lg accent-gray-400 cursor-pointer"
+              />
+            </div>
+          </div>
+
           {/* Original Mode */}
-          {materialMode === 'original' && (
+          {materialMode === "original" && (
             <div className="px-4 pb-4">
               <div className="p-4 bg-gradient-to-br from-gray-700/30 to-gray-800/30 rounded-lg border border-gray-700/50">
                 <div className="flex items-center gap-3 mb-3">
@@ -276,30 +378,39 @@ function MaterialsList({ model, onMaterialUpdate }) {
                     <span className="text-xl">🎨</span>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-200">Original Colors</h3>
-                    <p className="text-xs text-gray-500">Using model's original materials</p>
+                    <h3 className="text-sm font-medium text-gray-200">
+                      Original Colors
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Using model&apos;s original materials
+                    </p>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar">
                   {materials.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2 text-xs">
-                      <div 
+                    <button
+                      key={index}
+                      onClick={() => handleSelectMaterial(item.material.uuid)}
+                      className={`w-full flex items-center gap-2 text-xs p-1 rounded hover:bg-white/5 transition-colors ${
+                        selectedMaterialId === item.material.uuid
+                          ? "bg-white/10"
+                          : ""
+                      }`}
+                    >
+                      <div
                         className="w-4 h-4 rounded border border-gray-600 flex-shrink-0"
-                        style={{ 
+                        style={{
                           backgroundColor: `#${item.originalColor.getHexString()}`,
-                          background: item.hasVertexColors 
-                            ? 'linear-gradient(135deg, #ef4444, #22c55e, #3b82f6)'
-                            : `#${item.originalColor.getHexString()}`
+                          background: item.hasVertexColors
+                            ? "linear-gradient(135deg, #ef4444, #22c55e, #3b82f6)"
+                            : `#${item.originalColor.getHexString()}`,
                         }}
                       />
-                      <span className="text-gray-400 truncate flex-1">{item.name}</span>
-                      {item.hasVertexColors && (
-                        <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[9px]">
-                          Vertex
-                        </span>
-                      )}
-                    </div>
+                      <span className="text-gray-400 truncate flex-1 text-left">
+                        {item.name}
+                      </span>
+                    </button>
                   ))}
                 </div>
 
@@ -307,117 +418,109 @@ function MaterialsList({ model, onMaterialUpdate }) {
                   onClick={restoreOriginals}
                   className="w-full mt-3 py-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg text-xs text-gray-300 transition-colors flex items-center justify-center gap-2"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
                   Reset to Original
                 </button>
               </div>
             </div>
           )}
 
-          {/* PBR Mode */}
-          {materialMode === 'pbr' && (
+          {/* Solid Mode */}
+          {materialMode === "solid" && (
             <div className="px-4 pb-4">
-              {/* All Materials Mode */}
-              {applyMode === 'all' && (
-                <div className="space-y-3">
-                  <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                    <p className="text-xs text-blue-400 flex items-center gap-2">
-                      <span>🌐</span>
-                      <span>Changes will apply to all {materials.length} materials</span>
-                    </p>
-                  </div>
-                  <PBRTexturePanel
-                    isGlobalMode={true}
-                    materials={allMaterialObjects}
-                    onUpdate={onMaterialUpdate}
-                  />
-                </div>
-              )}
-
-              {/* Individual Material Mode */}
-              {applyMode === 'individual' && (
+              {applyMode === "all" ? (
+                <SolidColorPanel
+                  isGlobalMode={true}
+                  materials={allMaterialObjects}
+                  onUpdate={onMaterialUpdate}
+                />
+              ) : (
                 <>
-                  {/* Search */}
-                  {materials.length > 3 && (
-                    <div className="mb-3">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Search materials..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full px-3 py-1.5 pl-8 bg-gray-700/50 border border-gray-600/50 rounded-lg text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-blue-500/50"
-                        />
-                        <svg 
-                          className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        {searchTerm && (
-                          <button
-                            onClick={() => setSearchTerm('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Material Selector Tabs */}
                   <div className="mb-3 flex flex-wrap gap-1">
-                    {filteredMaterials.map((item, index) => (
+                    {filteredMaterials.map((item) => (
                       <button
                         key={item.material.uuid}
-                        onClick={() => setSelectedMaterialId(item.material.uuid)}
+                        onClick={() =>
+                          handleSelectMaterial(item.material.uuid)
+                        }
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all ${
                           selectedMaterialId === item.material.uuid
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                            ? "bg-cyan-500 text-white"
+                            : "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
                         }`}
                       >
-                        <div 
+                        <div
                           className="w-3 h-3 rounded-sm border border-white/20"
-                          style={{ 
+                          style={{
                             backgroundColor: `#${item.originalColor.getHexString()}`,
-                            background: item.hasVertexColors 
-                              ? 'linear-gradient(135deg, #ef4444, #22c55e, #3b82f6)'
-                              : `#${item.originalColor.getHexString()}`
                           }}
                         />
-                        <span className="truncate max-w-[80px]">{item.name}</span>
+                        <span className="truncate max-w-[80px]">
+                          {item.name}
+                        </span>
                       </button>
                     ))}
                   </div>
 
-                  {/* Selected Material PBR Panel */}
                   {selectedMaterial && (
                     <div className="border border-gray-700/50 rounded-lg overflow-hidden">
-                      <div className="p-2 bg-gray-700/30 border-b border-gray-700/50 flex items-center gap-2">
-                        <div 
-                          className="w-5 h-5 rounded border border-gray-600"
-                          style={{ 
-                            backgroundColor: `#${selectedMaterial.originalColor.getHexString()}`,
-                            background: selectedMaterial.hasVertexColors 
-                              ? 'linear-gradient(135deg, #ef4444, #22c55e, #3b82f6)'
-                              : `#${selectedMaterial.originalColor.getHexString()}`
+                      <div className="p-2 bg-gray-700/30 border-b border-gray-700/50">
+                        <span className="text-sm font-medium text-gray-200">
+                          {selectedMaterial.name}
+                        </span>
+                      </div>
+                      <div className="p-3">
+                        <SolidColorPanel
+                          material={selectedMaterial.material}
+                          isGlobalMode={false}
+                          onUpdate={onMaterialUpdate}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* PBR Mode */}
+          {materialMode === "pbr" && (
+            <div className="px-4 pb-4">
+              {applyMode === "all" ? (
+                <PBRTexturePanel
+                  isGlobalMode={true}
+                  materials={allMaterialObjects}
+                  onUpdate={onMaterialUpdate}
+                />
+              ) : (
+                <>
+                  <div className="mb-3 flex flex-wrap gap-1">
+                    {filteredMaterials.map((item) => (
+                      <button
+                        key={item.material.uuid}
+                        onClick={() =>
+                          handleSelectMaterial(item.material.uuid)
+                        }
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all ${
+                          selectedMaterialId === item.material.uuid
+                            ? "bg-blue-500 text-white"
+                            : "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                        }`}
+                      >
+                        <div
+                          className="w-3 h-3 rounded-sm border border-white/20"
+                          style={{
+                            backgroundColor: `#${item.originalColor.getHexString()}`,
                           }}
                         />
-                        <span className="text-sm font-medium text-gray-200">{selectedMaterial.name}</span>
-                        {selectedMaterial.hasVertexColors && (
-                          <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[9px]">
-                            Vertex Colors
-                          </span>
-                        )}
-                      </div>
+                        <span className="truncate max-w-[80px]">
+                          {item.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedMaterial && (
+                    <div className="border border-gray-700/50 rounded-lg overflow-hidden">
                       <div className="p-3">
                         <PBRTexturePanel
                           material={selectedMaterial.material}
@@ -435,72 +538,44 @@ function MaterialsList({ model, onMaterialUpdate }) {
           )}
 
           {/* Gradient Mode */}
-          {materialMode === 'gradient' && (
+          {materialMode === "gradient" && (
             <div className="px-4 pb-4">
-              {/* All Materials Mode */}
-              {applyMode === 'all' && (
-                <div className="space-y-3">
-                  <div className="p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                    <p className="text-xs text-purple-400 flex items-center gap-2">
-                      <span>🌐</span>
-                      <span>Gradient will apply to all {materials.length} materials</span>
-                    </p>
-                  </div>
-                  <GradientColorPanel
-                    material={null}
-                    meshes={allMeshes}
-                    onUpdate={onMaterialUpdate}
-                  />
-                </div>
-              )}
-
-              {/* Individual Material Mode */}
-              {applyMode === 'individual' && (
+              {applyMode === "all" ? (
+                <GradientColorPanel
+                  material={null}
+                  meshes={allMeshes}
+                  onUpdate={onMaterialUpdate}
+                />
+              ) : (
                 <>
-                  {/* Material Selector */}
-                  <div className="mb-3">
-                    <label className="text-xs text-gray-400 mb-1.5 block">Select Material</label>
-                    <div className="flex flex-wrap gap-1">
-                      {materials.map((item) => (
-                        <button
-                          key={item.material.uuid}
-                          onClick={() => setSelectedMaterialId(item.material.uuid)}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs transition-all ${
-                            selectedMaterialId === item.material.uuid
-                              ? 'bg-purple-500 text-white'
-                              : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
-                          }`}
-                        >
-                          <div 
-                            className="w-3 h-3 rounded-sm border border-white/20"
-                            style={{ 
-                              backgroundColor: `#${item.originalColor.getHexString()}`,
-                              background: item.hasVertexColors 
-                                ? 'linear-gradient(135deg, #ef4444, #22c55e, #3b82f6)'
-                                : `#${item.originalColor.getHexString()}`
-                            }}
-                          />
-                          <span className="truncate max-w-[80px]">{item.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Selected Material Gradient Panel */}
-                  {selectedMaterial && (
-                    <div className="border border-gray-700/50 rounded-lg overflow-hidden">
-                      <div className="p-2 bg-gray-700/30 border-b border-gray-700/50 flex items-center gap-2">
-                        <div 
-                          className="w-5 h-5 rounded border border-gray-600"
-                          style={{ 
-                            backgroundColor: `#${selectedMaterial.originalColor.getHexString()}`,
-                            background: selectedMaterial.hasVertexColors 
-                              ? 'linear-gradient(135deg, #ef4444, #22c55e, #3b82f6)'
-                              : `#${selectedMaterial.originalColor.getHexString()}`
+                  <div className="mb-3 flex flex-wrap gap-1">
+                    {materials.map((item) => (
+                      <button
+                        key={item.material.uuid}
+                        onClick={() =>
+                          handleSelectMaterial(item.material.uuid)
+                        }
+                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs transition-all ${
+                          selectedMaterialId === item.material.uuid
+                            ? "bg-purple-500 text-white"
+                            : "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                        }`}
+                      >
+                        <div
+                          className="w-3 h-3 rounded-sm border border-white/20"
+                          style={{
+                            backgroundColor: `#${item.originalColor.getHexString()}`,
                           }}
                         />
-                        <span className="text-sm font-medium text-gray-200">{selectedMaterial.name}</span>
-                      </div>
+                        <span className="truncate max-w-[80px]">
+                          {item.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedMaterial && (
+                    <div className="border border-gray-700/50 rounded-lg overflow-hidden">
                       <div className="p-3">
                         <GradientColorPanel
                           material={selectedMaterial.material}
@@ -514,22 +589,6 @@ function MaterialsList({ model, onMaterialUpdate }) {
               )}
             </div>
           )}
-
-          {/* Info Footer */}
-          <div className="px-4 pb-3 border-t border-gray-700/50 pt-3">
-            <div className="flex items-start gap-2 text-[10px] text-gray-500">
-              <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>
-                {materialMode === 'original' && "Original colors and gradients from the model are preserved."}
-                {materialMode === 'pbr' && applyMode === 'all' && "PBR settings apply to all materials at once."}
-                {materialMode === 'pbr' && applyMode === 'individual' && "Select a material to edit its PBR properties individually."}
-                {materialMode === 'gradient' && applyMode === 'all' && "Gradient applies to all materials."}
-                {materialMode === 'gradient' && applyMode === 'individual' && "Select a material to apply gradient individually."}
-              </span>
-            </div>
-          </div>
         </>
       )}
     </div>
