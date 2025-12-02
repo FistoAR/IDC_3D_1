@@ -1,5 +1,5 @@
 // Components/MaterialsList.jsx
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import * as THREE from "three";
 import PBRTexturePanel from "./PBRTexturePanel";
 import GradientColorPanel from "./GradientColorPanel";
@@ -26,10 +26,22 @@ function MaterialsList({ model, onMaterialUpdate, onFocusMaterial }) {
   const [selectedMaterialId, setSelectedMaterialId] = useState(null);
   const [originalMaterials, setOriginalMaterials] = useState(new Map());
   const [globalOpacity, setGlobalOpacity] = useState(1.0);
+  
+  // Track if user manually selected (for blink effect)
+  const [shouldBlink, setShouldBlink] = useState(false);
+  
+  // Ref to track if blink is in progress
+  const blinkInProgressRef = useRef(false);
+  const blinkTimeoutsRef = useRef([]);
 
   // Initialize materials map
   useEffect(() => {
-    if (!model) { setMaterials([]); setOriginalMaterials(new Map()); return; }
+    if (!model) { 
+      setMaterials([]); 
+      setOriginalMaterials(new Map()); 
+      setSelectedMaterialId(null);
+      return; 
+    }
 
     const materialMap = new Map();
     const originals = new Map();
@@ -123,14 +135,27 @@ function MaterialsList({ model, onMaterialUpdate, onFocusMaterial }) {
     setMaterials(materialsList);
     setOriginalMaterials(originals);
 
-    if (materialsList.length > 0 && !selectedMaterialId) {
+    // Auto-select first material WITHOUT triggering blink
+    if (materialsList.length > 0) {
       setSelectedMaterialId(materialsList[0].material.uuid);
+      // Don't set shouldBlink here - only on user click
     }
   }, [model]);
 
-  // Blink highlight for selected material
+  // Cleanup blink timeouts on unmount
   useEffect(() => {
-    if (!selectedMaterialId || !materials.length) return;
+    return () => {
+      blinkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+      blinkTimeoutsRef.current = [];
+    };
+  }, []);
+
+  // Blink highlight - ONLY when shouldBlink is true (user clicked)
+  useEffect(() => {
+    if (!shouldBlink || !selectedMaterialId || !materials.length) return;
+
+    // If already blinking, don't start another blink
+    if (blinkInProgressRef.current) return;
 
     const item = materials.find((m) => m.material.uuid === selectedMaterialId);
     if (!item || !item.material) return;
@@ -142,38 +167,57 @@ function MaterialsList({ model, onMaterialUpdate, onFocusMaterial }) {
       : new THREE.Color(0x000000);
     const origIntensity = mat.emissiveIntensity || 0;
 
-    const blinkColor = new THREE.Color(0x00ffff); // cyan
+    const blinkColor = new THREE.Color(0xff0000);
     const blinkIntensity = 0.6;
-    const blinkDuration = 150;
+    const blinkDuration = 120;
     const maxBlinks = 2;
-    let count = 0;
 
-    const blinkOn = () => {
-      if (count >= maxBlinks) return;
-      mat.emissive = blinkColor;
-      mat.emissiveIntensity = blinkIntensity;
-      onMaterialUpdate?.();
-      setTimeout(blinkOff, blinkDuration);
-    };
+    // Clear any existing timeouts
+    blinkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    blinkTimeoutsRef.current = [];
 
-    const blinkOff = () => {
+    blinkInProgressRef.current = true;
+
+    // Schedule all blinks upfront
+    for (let i = 0; i < maxBlinks; i++) {
+      const onTime = i * (blinkDuration * 2);
+      const offTime = onTime + blinkDuration;
+
+      // Blink ON
+      const onTimeout = setTimeout(() => {
+        mat.emissive = blinkColor;
+        mat.emissiveIntensity = blinkIntensity;
+        onMaterialUpdate?.();
+      }, onTime);
+      blinkTimeoutsRef.current.push(onTimeout);
+
+      // Blink OFF
+      const offTimeout = setTimeout(() => {
+        mat.emissive = origEmissive;
+        mat.emissiveIntensity = origIntensity;
+        onMaterialUpdate?.();
+      }, offTime);
+      blinkTimeoutsRef.current.push(offTimeout);
+    }
+
+    // Final cleanup after all blinks complete
+    const finalTimeout = setTimeout(() => {
       mat.emissive = origEmissive;
       mat.emissiveIntensity = origIntensity;
+      blinkInProgressRef.current = false;
+      setShouldBlink(false); // Reset blink flag
       onMaterialUpdate?.();
-      count++;
-      if (count < maxBlinks) {
-        setTimeout(blinkOn, blinkDuration);
-      }
-    };
-
-    blinkOn();
+    }, maxBlinks * blinkDuration * 2);
+    blinkTimeoutsRef.current.push(finalTimeout);
 
     return () => {
+      blinkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+      blinkTimeoutsRef.current = [];
       mat.emissive = origEmissive;
       mat.emissiveIntensity = origIntensity;
-      onMaterialUpdate?.();
+      blinkInProgressRef.current = false;
     };
-  }, [selectedMaterialId, materials, onMaterialUpdate]);
+  }, [shouldBlink, selectedMaterialId, materials, onMaterialUpdate]);
 
   // Restore originals
   const restoreOriginals = useCallback(() => {
@@ -223,10 +267,13 @@ function MaterialsList({ model, onMaterialUpdate, onFocusMaterial }) {
     onMaterialUpdate?.();
   };
 
-  // Selection helper: set selected material + ask viewer to focus
+  // User clicks to select material - triggers blink
   const handleSelectMaterial = (uuid) => {
-    setSelectedMaterialId(uuid);
-    onFocusMaterial?.(uuid);
+    // Only blink if selecting a different material
+    if (uuid !== selectedMaterialId) {
+      setSelectedMaterialId(uuid);
+      setShouldBlink(true); // Trigger blink effect
+    }
   };
 
   const filteredMaterials = useMemo(() => {

@@ -15,7 +15,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// ✅ CORRECT: Use process.env for Node.js
 const PORT = process.env.API_PORT || process.env.PORT || 5000;
 
 // Middleware
@@ -112,6 +111,67 @@ function computeNormals(positions, indices) {
     return normals;
 }
 
+/**
+ * Generate UV coordinates using triplanar box projection
+ * This works well for CAD models without existing UVs
+ */
+function generateUVs(positions, normals) {
+    const vertexCount = positions.length / 3;
+    const uvs = new Float32Array(vertexCount * 2);
+    
+    // Calculate bounding box for normalization
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    
+    for (let i = 0; i < positions.length; i += 3) {
+        minX = Math.min(minX, positions[i]);
+        maxX = Math.max(maxX, positions[i]);
+        minY = Math.min(minY, positions[i + 1]);
+        maxY = Math.max(maxY, positions[i + 1]);
+        minZ = Math.min(minZ, positions[i + 2]);
+        maxZ = Math.max(maxZ, positions[i + 2]);
+    }
+    
+    const sizeX = maxX - minX || 1;
+    const sizeY = maxY - minY || 1;
+    const sizeZ = maxZ - minZ || 1;
+    const maxSize = Math.max(sizeX, sizeY, sizeZ);
+    
+    for (let i = 0; i < vertexCount; i++) {
+        const px = positions[i * 3];
+        const py = positions[i * 3 + 1];
+        const pz = positions[i * 3 + 2];
+        
+        // Get normal for this vertex
+        const nx = Math.abs(normals[i * 3]);
+        const ny = Math.abs(normals[i * 3 + 1]);
+        const nz = Math.abs(normals[i * 3 + 2]);
+        
+        let u, v;
+        
+        // Triplanar projection based on dominant normal direction
+        if (nx >= ny && nx >= nz) {
+            // Project from X axis (use Y and Z)
+            u = (pz - minZ) / maxSize;
+            v = (py - minY) / maxSize;
+        } else if (ny >= nx && ny >= nz) {
+            // Project from Y axis (use X and Z)
+            u = (px - minX) / maxSize;
+            v = (pz - minZ) / maxSize;
+        } else {
+            // Project from Z axis (use X and Y)
+            u = (px - minX) / maxSize;
+            v = (py - minY) / maxSize;
+        }
+        
+        uvs[i * 2] = u;
+        uvs[i * 2 + 1] = v;
+    }
+    
+    return uvs;
+}
+
 function generateColor(index) {
     const colors = [
         { r: 0.9, g: 0.3, b: 0.2 },  // Red
@@ -129,7 +189,7 @@ function generateColor(index) {
 }
 
 // ============================================
-// GLB Creator
+// GLB Creator - WITH UV SUPPORT
 // ============================================
 
 function createGLB(meshes) {
@@ -209,6 +269,29 @@ function createGLB(meshes) {
             offset += normPad;
         }
 
+        // ============================================
+        // UV COORDINATES - NEW ADDITION
+        // ============================================
+        let uvAccIdx = null;
+        const uvs = m.uvs ? new Float32Array(m.uvs) : generateUVs(positions, normals);
+        const uvBuf = Buffer.from(uvs.buffer);
+        
+        gltf.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: uvBuf.length, target: 34962 });
+        uvAccIdx = gltf.accessors.length;
+        gltf.accessors.push({ 
+            bufferView: gltf.bufferViews.length - 1, 
+            componentType: 5126, 
+            count: uvs.length / 2, 
+            type: "VEC2" 
+        });
+        binChunks.push(uvBuf);
+        offset += uvBuf.length;
+        const uvPad = pad(uvBuf.length);
+        if (uvPad) {
+            binChunks.push(Buffer.alloc(uvPad));
+            offset += uvPad;
+        }
+
         // Indices (optional)
         let indAccIdx = null;
         if (m.indices && m.indices.length > 0) {
@@ -232,7 +315,11 @@ function createGLB(meshes) {
         }
 
         const primitive = { 
-            attributes: { POSITION: posAccIdx, NORMAL: normAccIdx }, 
+            attributes: { 
+                POSITION: posAccIdx, 
+                NORMAL: normAccIdx,
+                TEXCOORD_0: uvAccIdx  // Add UV attribute
+            }, 
             material: i 
         };
         if (indAccIdx !== null) {
@@ -275,7 +362,7 @@ function createGLB(meshes) {
 }
 
 // ============================================
-// OBJ Parser
+// OBJ Parser - WITH UV SUPPORT
 // ============================================
 class OBJParser {
     constructor(buffer) {
@@ -287,6 +374,7 @@ class OBJParser {
         
         const vertices = [];
         const normals = [];
+        const texCoords = [];
         const faces = [];
         
         for (const line of lines) {
@@ -305,14 +393,24 @@ class OBJParser {
                     parseFloat(parts[2]) || 0,
                     parseFloat(parts[3]) || 0
                 );
+            } else if (cmd === 'vt') {
+                texCoords.push(
+                    parseFloat(parts[1]) || 0,
+                    parseFloat(parts[2]) || 0
+                );
             } else if (cmd === 'f') {
-                const faceIndices = [];
+                const faceData = [];
                 for (let i = 1; i < parts.length; i++) {
                     const indices = parts[i].split('/');
-                    faceIndices.push(parseInt(indices[0]) - 1);
+                    faceData.push({
+                        v: parseInt(indices[0]) - 1,
+                        vt: indices[1] ? parseInt(indices[1]) - 1 : -1,
+                        vn: indices[2] ? parseInt(indices[2]) - 1 : -1
+                    });
                 }
-                for (let i = 1; i < faceIndices.length - 1; i++) {
-                    faces.push(faceIndices[0], faceIndices[i], faceIndices[i + 1]);
+                // Triangulate
+                for (let i = 1; i < faceData.length - 1; i++) {
+                    faces.push(faceData[0], faceData[i], faceData[i + 1]);
                 }
             }
         }
@@ -320,18 +418,41 @@ class OBJParser {
         if (vertices.length < 9) return [];
 
         const positions = [];
-        for (const idx of faces) {
+        const finalNormals = [];
+        const finalUVs = [];
+        
+        for (const face of faces) {
             positions.push(
-                vertices[idx * 3],
-                vertices[idx * 3 + 1],
-                vertices[idx * 3 + 2]
+                vertices[face.v * 3],
+                vertices[face.v * 3 + 1],
+                vertices[face.v * 3 + 2]
             );
+            
+            if (face.vt >= 0 && texCoords.length > 0) {
+                finalUVs.push(
+                    texCoords[face.vt * 2] || 0,
+                    texCoords[face.vt * 2 + 1] || 0
+                );
+            }
+            
+            if (face.vn >= 0 && normals.length > 0) {
+                finalNormals.push(
+                    normals[face.vn * 3] || 0,
+                    normals[face.vn * 3 + 1] || 0,
+                    normals[face.vn * 3 + 2] || 0
+                );
+            }
         }
+
+        const computedNormals = finalNormals.length === positions.length 
+            ? finalNormals 
+            : Array.from(computeNormals(new Float32Array(positions), null));
 
         return [{
             name: 'OBJ_Mesh',
-            positions: positions.length > 0 ? positions : vertices,
-            normals: Array.from(computeNormals(new Float32Array(positions.length > 0 ? positions : vertices), null)),
+            positions: positions,
+            normals: computedNormals,
+            uvs: finalUVs.length === (positions.length / 3) * 2 ? finalUVs : null,
             indices: null,
             color: { r: 0.7, g: 0.7, b: 0.7 }
         }];
@@ -378,6 +499,7 @@ class STLParser {
             name: 'STL_Mesh',
             positions,
             normals: normals.length === positions.length ? normals : Array.from(computeNormals(new Float32Array(positions), null)),
+            uvs: null, // STL doesn't have UVs, will be generated
             indices: null,
             color: { r: 0.8, g: 0.8, b: 0.8 }
         }];
@@ -414,6 +536,7 @@ class STLParser {
             name: 'STL_Mesh',
             positions,
             normals,
+            uvs: null, // Will be generated
             indices: null,
             color: { r: 0.8, g: 0.8, b: 0.8 }
         }];
@@ -449,12 +572,15 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
             result.meshes.forEach((m, i) => {
                 const pos = new Float32Array(m.attributes.position.array);
                 const ind = m.index ? Array.from(m.index.array) : null;
+                const normArray = m.attributes.normal ? 
+                    Array.from(m.attributes.normal.array) : 
+                    Array.from(computeNormals(pos, ind));
+                
                 meshes.push({
                     name: m.name || `STEP_Part_${i}`,
                     positions: Array.from(pos),
-                    normals: m.attributes.normal ? 
-                        Array.from(m.attributes.normal.array) : 
-                        Array.from(computeNormals(pos, ind)),
+                    normals: normArray,
+                    uvs: null, // STEP files don't have UVs, will be generated
                     indices: ind,
                     color: m.color ? 
                         { r: m.color[0], g: m.color[1], b: m.color[2] } : 
@@ -529,7 +655,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
             throw new Error("No valid geometry found after validation.");
         }
 
-        console.log(`   💾 Generating GLB with ${meshes.length} mesh(es)...`);
+        console.log(`   💾 Generating GLB with ${meshes.length} mesh(es) + UVs...`);
         
         let totalVertices = 0;
         let totalTriangles = 0;
@@ -560,7 +686,8 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
             originalName,
             meshCount: meshes.length,
             vertices: totalVertices,
-            triangles: Math.floor(totalTriangles)
+            triangles: Math.floor(totalTriangles),
+            hasUVs: true
         });
 
     } catch (error) {
@@ -591,29 +718,30 @@ app.get('/api/health', async (req, res) => {
     const occt = await initOCCT();
     res.json({
         status: 'ok',
-        version: '2.5.0',
+        version: '2.6.0',
         capabilities: {
             step: !!occt,
             obj: true,
             stl: true,
             glb: true,
             gltf: true,
-            fbx: 'passthrough'
+            fbx: 'passthrough',
+            uvGeneration: true
         },
-        mode: "Pure JavaScript - Optimized Parsers"
+        mode: "Pure JavaScript - Optimized Parsers with UV Support"
     });
 });
 
 app.get('/api/formats', (req, res) => {
     res.json({
         supported: [
-            { ext: '.step, .stp', name: 'STEP', status: 'full', library: 'occt-import-js' },
-            { ext: '.obj', name: 'Wavefront OBJ', status: 'full', library: 'native' },
-            { ext: '.stl', name: 'STL', status: 'full', library: 'native' },
-            { ext: '.glb, .gltf', name: 'glTF', status: 'passthrough', library: 'native' },
-            { ext: '.fbx', name: 'FBX', status: 'passthrough', library: 'client-side' }
+            { ext: '.step, .stp', name: 'STEP', status: 'full', library: 'occt-import-js', uvs: 'auto-generated' },
+            { ext: '.obj', name: 'Wavefront OBJ', status: 'full', library: 'native', uvs: 'preserved or auto-generated' },
+            { ext: '.stl', name: 'STL', status: 'full', library: 'native', uvs: 'auto-generated' },
+            { ext: '.glb, .gltf', name: 'glTF', status: 'passthrough', library: 'native', uvs: 'preserved' },
+            { ext: '.fbx', name: 'FBX', status: 'passthrough', library: 'client-side', uvs: 'preserved' }
         ],
-        output: 'GLB (Binary glTF 2.0)'
+        output: 'GLB (Binary glTF 2.0) with UV coordinates'
     });
 });
 
@@ -642,17 +770,17 @@ initOCCT()
 
 app.listen(PORT || 5000, () => {
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`🚀 CAD Converter Server v2.5 - Lite Version`);
+    console.log(`🚀 CAD Converter Server v2.6 - With UV Support`);
     console.log(`   Port: ${PORT || 5000}`);
-    console.log(`   Mode: Pure JavaScript`);
+    console.log(`   Mode: Pure JavaScript + Auto UV Generation`);
     console.log(`${'='.repeat(60)}`);
     console.log(`\n📋 Supported formats:`);
-    console.log(`   ✅ STEP/STP - via occt-import-js`);
-    console.log(`   ✅ OBJ - native parser`);
-    console.log(`   ✅ STL - native parser`);
+    console.log(`   ✅ STEP/STP - via occt-import-js + auto UVs`);
+    console.log(`   ✅ OBJ - native parser + UV preservation`);
+    console.log(`   ✅ STL - native parser + auto UVs`);
     console.log(`   ✅ GLB/GLTF - passthrough`);
     console.log(`   ⚠️ FBX - passthrough (use client loader)`);
-    console.log(`\n🔗 Health check: ${PORT}/api/health`);
-    console.log(`🔗 Convert endpoint: POST ${PORT}/api/convert`);
+    console.log(`\n🔗 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🔗 Convert endpoint: POST http://localhost:${PORT}/api/convert`);
     console.log('');
 });
