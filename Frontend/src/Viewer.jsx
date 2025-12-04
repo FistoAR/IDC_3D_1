@@ -1,3 +1,4 @@
+// Frontend/src/Viewer.jsx
 import React, { useEffect, useState, Suspense, useCallback, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment } from "@react-three/drei";
@@ -32,7 +33,7 @@ export default function Viewer() {
   // View State
   const [wireframe, setWireframe] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
-  const [bgColor, setBgColor] = useState("#1a1a2e");
+  const [bgColor, setBgColor] = useState("rgba(26, 26, 46, 1)");
   const [showGrid, setShowGrid] = useState(true);
   const [showBase, setShowBase] = useState(true);
   const [zoom, setZoom] = useState(100);
