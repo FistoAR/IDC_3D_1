@@ -1,4 +1,4 @@
-// Components/Toolbar.js
+// Components/Toolbar.jsx
 import React, { useState } from "react";
 
 function Toolbar({ 
@@ -11,7 +11,8 @@ function Toolbar({
   setTransformMode, 
   clearModel,
   onExport,
-  isExporting 
+  isExporting,
+  modelsCount = 1
 }) {
   const [showExportMenu, setShowExportMenu] = useState(false);
 
@@ -24,6 +25,19 @@ function Toolbar({
 
   return (
     <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 bg-gray-800/60 backdrop-blur-md p-2 rounded-xl border border-gray-700/50">
+      {/* Models Count Badge */}
+      {modelsCount > 1 && (
+        <>
+          <div className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-xs font-medium flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            {modelsCount} models
+          </div>
+          <div className="h-6 w-px bg-gray-600" />
+        </>
+      )}
+
       <button
         onClick={clearModel}
         className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
@@ -31,7 +45,7 @@ function Toolbar({
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
         </svg>
-        Clear
+        {modelsCount > 1 ? 'Clear All' : 'Clear'}
       </button>
       
       <div className="h-6 w-px bg-gray-600" />
@@ -51,7 +65,7 @@ function Toolbar({
           wireframe ? "bg-purple-500/30 text-purple-400" : "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
         }`}
       >
-        Wire
+        Wireframe
       </button>
       
       <div className="h-6 w-px bg-gray-600" />
@@ -66,10 +80,9 @@ function Toolbar({
               : "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
           }`}
         >
-          {mode === 'translate'}
-          {mode === 'rotate'}
-          {mode === 'scale'}
-          {' '}{mode.charAt(0).toUpperCase() + mode.slice(1)}
+          {mode === 'translate' && '↔ Move'}
+          {mode === 'rotate' && '↻ Rotate'}
+          {mode === 'scale' && '⤡ Scale'}
         </button>
       ))}
 
@@ -99,7 +112,7 @@ function Toolbar({
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Export
+              Export {modelsCount > 1 ? 'All' : ''}
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -115,7 +128,7 @@ function Toolbar({
             >
               <span className="text-green-400">●</span>
               GLB (Binary)
-              <span className="ml-auto text-gray-500 text-[10px]">Recommended</span>
+              <span className="ml-auto text-gray-500 text-[10px]">Rec</span>
             </button>
             <button
               onClick={() => handleExportClick('gltf')}
@@ -129,7 +142,14 @@ function Toolbar({
               className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-700 hover:text-white flex items-center gap-2 transition-colors"
             >
               <span className="text-yellow-400">●</span>
-              OBJ (Basic)
+              OBJ
+            </button>
+            <button
+              onClick={() => handleExportClick('stl')}
+              className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-700 hover:text-white flex items-center gap-2 transition-colors"
+            >
+              <span className="text-orange-400">●</span>
+              STL
             </button>
           </div>
         )}
