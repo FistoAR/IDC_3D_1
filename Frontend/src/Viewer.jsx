@@ -21,66 +21,8 @@ function CameraAnimator() {
   return null;
 }
 
-// Helper function to clone scene with independent materials
-const cloneSceneWithIndependentMaterials = (sourceScene) => {
-  const clonedScene = sourceScene.clone(true);
-  
-  // Create new materials for each mesh with color variation
-  clonedScene.traverse((child) => {
-    if (child.isMesh && child.material) {
-      if (Array.isArray(child.material)) {
-        child.material = child.material.map(mat => {
-          const newMat = mat.clone();
-          newMat.uuid = THREE.MathUtils.generateUUID();
-          
-          // Vary the color to make it visually distinct
-          if (newMat.color) {
-            const hsl = {};
-            newMat.color.getHSL(hsl);
-            // Shift hue by 10-30 degrees
-            hsl.h = (hsl.h + 0.05 + Math.random() * 0.1) % 1;
-            hsl.s = Math.min(1, Math.max(0, hsl.s + (Math.random() - 0.5) * 0.2));
-            hsl.l = Math.min(1, Math.max(0, hsl.l + (Math.random() - 0.5) * 0.1));
-            newMat.color.setHSL(hsl.h, hsl.s, hsl.l);
-          }
-          
-          // Clone textures if they exist (for PBR)
-          if (newMat.map) newMat.map = newMat.map.clone();
-          if (newMat.normalMap) newMat.normalMap = newMat.normalMap.clone();
-          if (newMat.roughnessMap) newMat.roughnessMap = newMat.roughnessMap.clone();
-          if (newMat.metalnessMap) newMat.metalnessMap = newMat.metalnessMap.clone();
-          if (newMat.aoMap) newMat.aoMap = newMat.aoMap.clone();
-          
-          newMat.needsUpdate = true;
-          return newMat;
-        });
-      } else {
-        const newMat = child.material.clone();
-        newMat.uuid = THREE.MathUtils.generateUUID();
-        
-        if (newMat.color) {
-          const hsl = {};
-          newMat.color.getHSL(hsl);
-          hsl.h = (hsl.h + 0.05 + Math.random() * 0.1) % 1;
-          hsl.s = Math.min(1, Math.max(0, hsl.s + (Math.random() - 0.5) * 0.2));
-          hsl.l = Math.min(1, Math.max(0, hsl.l + (Math.random() - 0.5) * 0.1));
-          newMat.color.setHSL(hsl.h, hsl.s, hsl.l);
-        }
-        
-        if (newMat.map) newMat.map = newMat.map.clone();
-        if (newMat.normalMap) newMat.normalMap = newMat.normalMap.clone();
-        if (newMat.roughnessMap) newMat.roughnessMap = newMat.roughnessMap.clone();
-        if (newMat.metalnessMap) newMat.metalnessMap = newMat.metalnessMap.clone();
-        if (newMat.aoMap) newMat.aoMap = newMat.aoMap.clone();
-        
-        newMat.needsUpdate = true;
-        child.material = newMat;
-      }
-    }
-  });
-  
-  return clonedScene;
-};
+// Maximum undo history size
+const MAX_UNDO_HISTORY = 50;
 
 export default function Viewer() {
   // Multi-Model State
@@ -112,6 +54,10 @@ export default function Viewer() {
   const [selectedMaterialId, setSelectedMaterialId] = useState(null);
   const [highlightedMeshes, setHighlightedMeshes] = useState([]);
   const [materialTransformMode, setMaterialTransformMode] = useState('none');
+  
+  // Undo History State
+  const [undoHistory, setUndoHistory] = useState([]);
+  const [undoNotification, setUndoNotification] = useState(null);
   
   // Lighting & Shadow State
   const [lights, setLights] = useState({
@@ -179,6 +125,90 @@ export default function Viewer() {
       models: models.length
     });
   }, [models]);
+
+  // =========================================================
+  // 🔄 UNDO SYSTEM (Ctrl+Z)
+  // =========================================================
+  
+  // Add state to undo history
+  const pushToUndoHistory = useCallback((state) => {
+    if (!state) return;
+    
+    setUndoHistory(prev => {
+      const newHistory = [...prev, state];
+      // Keep only last MAX_UNDO_HISTORY entries
+      if (newHistory.length > MAX_UNDO_HISTORY) {
+        return newHistory.slice(-MAX_UNDO_HISTORY);
+      }
+      return newHistory;
+    });
+  }, []);
+
+  // Handle transform start - save state for undo
+  const handleTransformStart = useCallback((state) => {
+    pushToUndoHistory(state);
+  }, [pushToUndoHistory]);
+
+  // Perform undo
+  const performUndo = useCallback(() => {
+    if (undoHistory.length === 0) {
+      setUndoNotification({ type: 'warning', message: 'Nothing to undo' });
+      setTimeout(() => setUndoNotification(null), 2000);
+      return;
+    }
+
+    const lastState = undoHistory[undoHistory.length - 1];
+    
+    if (lastState.type === 'model') {
+      // Find the model and restore its transform
+      const modelData = models.find(m => m.id === lastState.modelId);
+      if (modelData && modelData.scene) {
+        modelData.scene.position.copy(lastState.position);
+        modelData.scene.rotation.copy(lastState.rotation);
+        modelData.scene.scale.copy(lastState.scale);
+        modelData.scene.updateMatrixWorld(true);
+        
+        setUndoNotification({ type: 'success', message: 'Model transform undone' });
+      }
+    } else if (lastState.type === 'material') {
+      // Find the model and restore mesh transforms
+      const modelData = models.find(m => m.id === lastState.modelId);
+      if (modelData && modelData.scene) {
+        lastState.meshStates.forEach(meshState => {
+          modelData.scene.traverse((child) => {
+            if (child.isMesh && child.uuid === meshState.uuid) {
+              child.position.copy(meshState.position);
+              child.rotation.copy(meshState.rotation);
+              child.scale.copy(meshState.scale);
+              child.updateMatrixWorld(true);
+            }
+          });
+        });
+        
+        setUndoNotification({ type: 'success', message: 'Material mesh transform undone' });
+      }
+    }
+
+    // Remove the last state from history
+    setUndoHistory(prev => prev.slice(0, -1));
+    
+    // Clear notification after delay
+    setTimeout(() => setUndoNotification(null), 2000);
+  }, [undoHistory, models]);
+
+  // Keyboard shortcut handler for Ctrl+Z
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+Z or Cmd+Z (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        performUndo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [performUndo]);
 
   // Generate unique ID for each model
   const generateModelId = () => `model_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -287,6 +317,9 @@ export default function Viewer() {
     // Clear material selection if it belongs to deleted model
     setSelectedMaterialId(null);
     setHighlightedMeshes([]);
+    
+    // Clear undo history for deleted model
+    setUndoHistory(prev => prev.filter(state => state.modelId !== modelId));
   }, [selectedModelId, models]);
 
   // Handle model visibility toggle
@@ -295,36 +328,6 @@ export default function Viewer() {
       m.id === modelId ? { ...m, visible: !m.visible } : m
     ));
   }, []);
-
-  // Handle model duplication with independent materials
-  const handleDuplicateModel = useCallback((modelId) => {
-    const modelToDuplicate = models.find(m => m.id === modelId);
-    if (modelToDuplicate) {
-      const clonedScene = cloneSceneWithIndependentMaterials(modelToDuplicate.scene);
-      
-      // Offset position
-      const offset = 1.5;
-      clonedScene.position.x += offset;
-      
-      const newModel = {
-        id: generateModelId(),
-        scene: clonedScene,
-        fileName: `${modelToDuplicate.fileName} (copy)`,
-        stats: getModelStats(clonedScene),
-        visible: true,
-        position: [
-          modelToDuplicate.position[0] + offset, 
-          modelToDuplicate.position[1], 
-          modelToDuplicate.position[2]
-        ],
-        rotation: [...modelToDuplicate.rotation],
-        scale: [...modelToDuplicate.scale]
-      };
-      
-      setModels(prev => [...prev, newModel]);
-      setSelectedModelId(newModel.id);
-    }
-  }, [models]);
 
   // Update model stats
   const updateModelStats = useCallback((modelId) => {
@@ -357,6 +360,7 @@ export default function Viewer() {
     setSelectedMaterialId(null);
     setHighlightedMeshes([]);
     setMaterialTransformMode('none');
+    setUndoHistory([]);
     modelRefs.current = {};
   };
 
@@ -607,7 +611,6 @@ export default function Viewer() {
         selectedModelId={selectedModelId}
         onSelectModel={handleSelectModel}
         onDeleteModel={handleDeleteModel}
-        onDuplicateModel={handleDuplicateModel}
         onToggleVisibility={handleToggleModelVisibility}
         model={selectedModel?.scene}
         isDragging={isDragging}
@@ -649,6 +652,8 @@ export default function Viewer() {
         onClearMaterialSelection={handleClearMaterialSelection}
         materialTransformMode={materialTransformMode}
         setMaterialTransformMode={setMaterialTransformMode}
+        undoHistoryCount={undoHistory.length}
+        onUndo={performUndo}
       />
 
       <div className="flex-1 relative overflow-hidden">
@@ -719,6 +724,7 @@ export default function Viewer() {
                   selectedMaterialId={selectedModelId === modelData.id ? selectedMaterialId : null}
                   materialTransformMode={selectedModelId === modelData.id ? materialTransformMode : 'none'}
                   onMaterialMeshesUpdate={handleMaterialMeshesUpdate}
+                  onTransformStart={handleTransformStart}
                 />
               )
             ))}
@@ -746,6 +752,28 @@ export default function Viewer() {
             enabled={!isTransforming}
           />
         </Canvas>
+
+        {/* Undo Notification */}
+        {undoNotification && (
+          <div className={`absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg backdrop-blur-sm z-50 transition-all ${
+            undoNotification.type === 'success' 
+              ? 'bg-green-500/20 border border-green-500/50 text-green-400'
+              : 'bg-yellow-500/20 border border-yellow-500/50 text-yellow-400'
+          }`}>
+            <div className="flex items-center gap-2 text-sm">
+              {undoNotification.type === 'success' ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              )}
+              {undoNotification.message}
+            </div>
+          </div>
+        )}
 
         {/* Stats Panel - Top Left */}
         <div className="absolute top-4 left-4 flex flex-col gap-2">
@@ -796,17 +824,29 @@ export default function Viewer() {
           )}
 
           {selectedMaterialId && (
-            <div className="px-3 py-2 bg-purple-500/20 backdrop-blur-sm rounded-lg border border-purple-500/50">
+            <div className="px-3 py-2 bg-cyan-500/20 backdrop-blur-sm rounded-lg border border-cyan-500/50">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-purple-300">
+                <span className="text-xs text-cyan-300">
                   🎨 Material Selected ({highlightedMeshes.length} mesh{highlightedMeshes.length !== 1 ? 'es' : ''})
                 </span>
                 <button
                   onClick={handleClearMaterialSelection}
-                  className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                  className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
                 >
                   ✕
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Undo History Indicator */}
+          {undoHistory.length > 0 && (
+            <div className="px-3 py-2 bg-gray-800/90 backdrop-blur-sm rounded-lg border border-gray-700/50">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-400">
+                  ↩ {undoHistory.length} undo step{undoHistory.length !== 1 ? 's' : ''}
+                </span>
+                <span className="text-[10px] text-gray-500">Ctrl+Z</span>
               </div>
             </div>
           )}
@@ -824,9 +864,9 @@ export default function Viewer() {
 
         {/* Material Transform Mode Indicator */}
         {selectedMaterialId && materialTransformMode !== 'none' && (
-          <div className="absolute top-4 right-4 px-3 py-2 bg-purple-500/20 rounded-lg border border-purple-500/30">
-            <p className="text-xs text-purple-300">
-              <span className="font-bold text-purple-400">{materialTransformMode}</span> material meshes
+          <div className="absolute top-4 right-4 px-3 py-2 bg-cyan-500/20 rounded-lg border border-cyan-500/30">
+            <p className="text-xs text-cyan-300">
+              <span className="font-bold text-cyan-400">{materialTransformMode}</span> material meshes
             </p>
           </div>
         )}
@@ -851,6 +891,19 @@ export default function Viewer() {
               className="p-2.5 bg-gray-800/80 hover:bg-gray-700/80 rounded-lg transition-colors text-white"
             >
               ↺
+            </button>
+            {/* Undo Button */}
+            <button 
+              onClick={performUndo}
+              disabled={undoHistory.length === 0}
+              className={`p-2.5 rounded-lg transition-colors ${
+                undoHistory.length > 0 
+                  ? 'bg-gray-800/80 hover:bg-gray-700/80 text-white' 
+                  : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
+              }`}
+              title="Undo (Ctrl+Z)"
+            >
+              ↩
             </button>
           </div>
         )}

@@ -1,5 +1,5 @@
 // Components/MaterialsList.jsx
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import * as THREE from "three";
 import PBRTexturePanel from "./PBRTexturePanel";
 import GradientColorPanel from "./GradientColorPanel";
@@ -42,15 +42,10 @@ function MaterialsList({
   const [internalSelectedMaterialId, setInternalSelectedMaterialId] = useState(null);
   const [originalMaterials, setOriginalMaterials] = useState(new Map());
   const [globalOpacity, setGlobalOpacity] = useState(1.0);
-  const [shouldBlink, setShouldBlink] = useState(false);
-  const [showTransformPanel, setShowTransformPanel] = useState(false);
-  const blinkInProgressRef = useRef(false);
-  const blinkTimeoutsRef = useRef([]);
 
-  // Use external or internal selection
   const selectedMaterialId = externalSelectedMaterial ?? internalSelectedMaterialId;
 
-  // Initialize materials map
+  // Initialize materials
   useEffect(() => {
     if (!model) { 
       setMaterials([]); 
@@ -58,8 +53,6 @@ function MaterialsList({
       setInternalSelectedMaterialId(null);
       return; 
     }
-
-    console.log("MaterialsList: Initializing materials from model"); // Debug log
 
     const materialMap = new Map();
     const originals = new Map();
@@ -74,7 +67,6 @@ function MaterialsList({
           const hasVertexColors = mat.vertexColors === true ||
             (child.geometry && child.geometry.attributes.color);
 
-          // Count meshes per material
           meshCountMap.set(mat.uuid, (meshCountMap.get(mat.uuid) || 0) + 1);
 
           originals.set(mat.uuid, {
@@ -144,7 +136,6 @@ function MaterialsList({
                 meshCount: 1
               });
             } else {
-              // Update mesh count
               const existing = materialMap.get(mat.uuid);
               existing.meshCount++;
             }
@@ -153,87 +144,14 @@ function MaterialsList({
       }
     });
 
-    // Update mesh counts
     materialMap.forEach((item, uuid) => {
       item.meshCount = meshCountMap.get(uuid) || 1;
     });
 
     const materialsList = Array.from(materialMap.values());
-    console.log("MaterialsList: Found materials:", materialsList.length); // Debug log
     setMaterials(materialsList);
     setOriginalMaterials(originals);
-
-    // Don't auto-select first material - let user select
-    // if (materialsList.length > 0 && !selectedMaterialId) {
-    //   setInternalSelectedMaterialId(materialsList[0].material.uuid);
-    // }
   }, [model]);
-
-  // Cleanup blink timeouts
-  useEffect(() => {
-    return () => {
-      blinkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-      blinkTimeoutsRef.current = [];
-    };
-  }, []);
-
-  // Blink effect for selected material
-  useEffect(() => {
-    if (!shouldBlink || !selectedMaterialId || !materials.length) return;
-    if (blinkInProgressRef.current) return;
-
-    const item = materials.find((m) => m.material.uuid === selectedMaterialId);
-    if (!item || !item.material) return;
-
-    const mat = item.material;
-    const origEmissive = mat.emissive ? mat.emissive.clone() : new THREE.Color(0x000000);
-    const origIntensity = mat.emissiveIntensity || 0;
-
-    const blinkColor = new THREE.Color(0xff00ff);
-    const blinkIntensity = 0.8;
-    const blinkDuration = 150;
-    const maxBlinks = 3;
-
-    blinkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    blinkTimeoutsRef.current = [];
-    blinkInProgressRef.current = true;
-
-    for (let i = 0; i < maxBlinks; i++) {
-      const onTime = i * (blinkDuration * 2);
-      const offTime = onTime + blinkDuration;
-
-      const onTimeout = setTimeout(() => {
-        mat.emissive = blinkColor;
-        mat.emissiveIntensity = blinkIntensity;
-        onMaterialUpdate?.();
-      }, onTime);
-      blinkTimeoutsRef.current.push(onTimeout);
-
-      const offTimeout = setTimeout(() => {
-        mat.emissive = origEmissive;
-        mat.emissiveIntensity = origIntensity;
-        onMaterialUpdate?.();
-      }, offTime);
-      blinkTimeoutsRef.current.push(offTimeout);
-    }
-
-    const finalTimeout = setTimeout(() => {
-      mat.emissive = origEmissive;
-      mat.emissiveIntensity = origIntensity;
-      blinkInProgressRef.current = false;
-      setShouldBlink(false);
-      onMaterialUpdate?.();
-    }, maxBlinks * blinkDuration * 2);
-    blinkTimeoutsRef.current.push(finalTimeout);
-
-    return () => {
-      blinkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-      blinkTimeoutsRef.current = [];
-      mat.emissive = origEmissive;
-      mat.emissiveIntensity = origIntensity;
-      blinkInProgressRef.current = false;
-    };
-  }, [shouldBlink, selectedMaterialId, materials, onMaterialUpdate]);
 
   const restoreOriginals = useCallback(() => {
     materials.forEach(({ material }) => {
@@ -282,21 +200,12 @@ function MaterialsList({
   };
 
   const handleSelectMaterial = useCallback((uuid) => {
-    console.log("MaterialsList: handleSelectMaterial called with:", uuid); // Debug log
-    
-    // Always trigger selection, even if same material (for re-highlighting)
     if (onSelectMaterial) {
-      console.log("MaterialsList: Calling parent onSelectMaterial"); // Debug log
       onSelectMaterial(uuid);
     } else {
       setInternalSelectedMaterialId(uuid);
     }
-    
-    if (uuid !== selectedMaterialId) {
-      setShouldBlink(true);
-    }
-    setShowTransformPanel(true);
-  }, [onSelectMaterial, selectedMaterialId]);
+  }, [onSelectMaterial]);
 
   const handleFocusClick = (uuid, e) => {
     e.stopPropagation();
@@ -306,13 +215,11 @@ function MaterialsList({
   };
 
   const handleClearSelection = () => {
-    console.log("MaterialsList: Clearing selection"); // Debug log
     if (onClearMaterialSelection) {
       onClearMaterialSelection();
     } else {
       setInternalSelectedMaterialId(null);
     }
-    setShowTransformPanel(false);
     if (setMaterialTransformMode) {
       setMaterialTransformMode('none');
     }
@@ -341,7 +248,6 @@ function MaterialsList({
     [materials]
   );
 
-  // Get mesh count for selected material
   const getSelectedMaterialMeshCount = useCallback(() => {
     if (!model || !selectedMaterialId) return 0;
     let count = 0;
@@ -404,7 +310,7 @@ function MaterialsList({
             </div>
           </div>
 
-          {/* Material Selection Info Banner */}
+          {/* Selected Material Info */}
           {selectedMaterialId && selectedMaterial && (
             <div className="px-4 pb-3">
               <div className="p-3 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/40 rounded-lg">
@@ -417,15 +323,13 @@ function MaterialsList({
                           ? `#${selectedMaterial.material.color.getHexString()}` 
                           : '#888888'
                       }}
-                    >
-                      <span className="text-lg drop-shadow-md">🎨</span>
-                    </div>
+                    />
                     <div>
                       <p className="text-sm font-medium text-purple-200">
                         {selectedMaterial.name || 'Material'}
                       </p>
                       <p className="text-xs text-purple-400">
-                        {selectedMeshCount} mesh{selectedMeshCount !== 1 ? 'es' : ''} selected
+                        {selectedMeshCount} mesh{selectedMeshCount !== 1 ? 'es' : ''} highlighted
                       </p>
                     </div>
                   </div>
@@ -440,7 +344,7 @@ function MaterialsList({
                   </button>
                 </div>
 
-                {/* Transform Controls for Selected Material */}
+                {/* Transform Controls */}
                 <div className="pt-2 border-t border-purple-500/30">
                   <p className="text-[10px] text-purple-400 mb-2 uppercase tracking-wider">
                     Transform Material Meshes
@@ -464,14 +368,13 @@ function MaterialsList({
                   </div>
                 </div>
 
-                {/* Hint */}
                 {materialTransformMode !== 'none' && (
                   <div className="mt-2 p-2 bg-purple-500/10 rounded-md">
                     <p className="text-[10px] text-purple-300 flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Drag the gizmo to {materialTransformMode} all meshes with this material
+                      Drag the gizmo to {materialTransformMode} meshes
                     </p>
                   </div>
                 )}
@@ -529,9 +432,7 @@ function MaterialsList({
           <div className="px-4 pb-3">
             <div className="space-y-1">
               <div className="flex justify-between text-xs text-gray-400">
-                <span className="flex items-center gap-1">
-                  Opacity {applyMode === "individual" ? "(Selected)" : "(All)"}
-                </span>
+                <span>Opacity {applyMode === "individual" ? "(Selected)" : "(All)"}</span>
                 <span>{(globalOpacity * 100).toFixed(0)}%</span>
               </div>
               <input
@@ -587,9 +488,8 @@ function MaterialsList({
                     </div>
                   </div>
                   
-                  {/* Actions */}
+                  {/* Focus Button */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {/* Focus Button */}
                     <button
                       onClick={(e) => handleFocusClick(item.material.uuid, e)}
                       className="p-1.5 bg-gray-600/50 hover:bg-blue-500/50 rounded-md transition-colors"

@@ -53,7 +53,6 @@ function Sidebar({
   selectedModelId,
   onSelectModel,
   onDeleteModel,
-  onDuplicateModel,
   onToggleVisibility,
   model, // Current selected model scene
   
@@ -107,7 +106,11 @@ function Sidebar({
   onSelectMaterial,
   onClearMaterialSelection,
   materialTransformMode,
-  setMaterialTransformMode
+  setMaterialTransformMode,
+  
+  // Undo
+  undoHistoryCount = 0,
+  onUndo
 }) {
   const [serverStatus, setServerStatus] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -607,14 +610,13 @@ function Sidebar({
         )}
       </div>
 
-      {/* Model List - Multiple Models Management */}
+      {/* Model List - Multiple Models Management (No Duplicate Option) */}
       {models && models.length > 0 && !isLoading && (
         <ModelList
           models={models}
           selectedModelId={selectedModelId}
           onSelectModel={onSelectModel}
           onDeleteModel={onDeleteModel}
-          onDuplicateModel={onDuplicateModel}
           onToggleVisibility={onToggleVisibility}
         />
       )}
@@ -837,9 +839,25 @@ function Sidebar({
                 </div>
               </div>
 
+              {/* Undo Button */}
+              {undoHistoryCount > 0 && (
+                <div className="mt-3">
+                  <button
+                    onClick={onUndo}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-700/50 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors border border-gray-600/50 hover:border-gray-500"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                    <span>Undo ({undoHistoryCount})</span>
+                    <span className="text-xs text-gray-500 ml-auto px-1.5 py-0.5 bg-gray-600/50 rounded">Ctrl+Z</span>
+                  </button>
+                </div>
+              )}
+
               {/* Selected Model Info */}
               {selectedModelId && models.length > 1 && (
-                <div className="p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                   <p className="text-xs text-blue-400">
                     Transforming: {models.find(m => m.id === selectedModelId)?.fileName || 'Selected'}
                   </p>
