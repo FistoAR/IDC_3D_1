@@ -57,29 +57,41 @@ function LightControls({ lights, setLights }) {
           />
         </div>
         {lights.directional.visible && (
-          <>
-            <div className="space-y-1">
-              <div className="flex justify-between text-[10px] text-gray-400">
-                <span>Intensity</span><span>{lights.directional.intensity.toFixed(2)}</span>
-              </div>
-              <input 
-                type="range" min="0" max="5" step="0.1" 
-                value={lights.directional.intensity} 
-                onChange={(e) => updateLight('directional', 'intensity', parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-gray-700 rounded-lg accent-yellow-500" 
-              />
+        <>
+          {/* Intensity Slider */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-gray-400">
+              <span>Intensity</span>
+              <span>{lights.directional.intensity.toFixed(2)}</span>
             </div>
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="text-gray-400">Color</span>
+            <input 
+              type="range" 
+              min="0" 
+              max="5" 
+              step="0.1" 
+              value={lights.directional.intensity} 
+              onChange={(e) => updateLight('directional', 'intensity', parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-gray-700 rounded-lg accent-yellow-500" 
+            />
+          </div>
+          
+          {/* Color Picker - Perfect Square */}
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-400">Color</span>
+            <div className="relative w-6 h-6 rounded-md overflow-hidden border border-gray-600 hover:border-gray-500 transition-colors">
               <input 
                 type="color" 
                 value={lights.directional.color} 
                 onChange={(e) => updateLight('directional', 'color', e.target.value)}
-                className="w-4 h-4 rounded cursor-pointer border-none p-0" 
+                className="absolute inset-[-2px] w-[calc(100%+4px)] h-[calc(100%+4px)] cursor-pointer border-none p-0 bg-transparent
+                  [&::-webkit-color-swatch-wrapper]:p-0 
+                  [&::-webkit-color-swatch]:border-none 
+                  [&::-moz-color-swatch]:border-none" 
               />
             </div>
-          </>
-        )}
+          </div>
+        </>
+      )}
       </div>
 
       {/* Point Light */}

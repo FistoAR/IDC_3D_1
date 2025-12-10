@@ -14,6 +14,16 @@ const createBoundingBoxMaterial = () => new THREE.LineBasicMaterial({
   depthWrite: false
 });
 
+// Hover highlight material
+const createHoverMaterial = () => new THREE.MeshBasicMaterial({
+  color: 0x00ffff,
+  transparent: true,
+  opacity: 0.15,
+  side: THREE.DoubleSide,
+  depthTest: false,
+  depthWrite: false
+});
+
 function Model({ 
   modelId,
   scene, 
@@ -26,9 +36,11 @@ function Model({
   selectedMaterialId,
   materialTransformMode = 'none',
   onMaterialMeshesUpdate,
-  onTransformStart // New prop for undo system
+  onTransformStart,
+  onMeshClick,
+  enableMaterialPicking = true
 }) {
-  const { camera, gl, scene: threeScene } = useThree();
+  const { camera, gl, scene: threeScene, raycaster, pointer } = useThree();
   const groupRef = useRef();
   const transformControlsRef = useRef();
   const materialTransformRef = useRef();
@@ -48,6 +60,11 @@ function Model({
 
   // Store initial transform for undo
   const transformStartState = useRef(null);
+
+  // Hover state for material picking
+  const [hoveredMesh, setHoveredMesh] = useState(null);
+  const hoverHighlightRef = useRef(null);
+  const hoverOutlineRef = useRef(null);
 
   // Setup scene on load
   useEffect(() => {
@@ -129,7 +146,119 @@ function Model({
     originalMatrices.current.clear();
   }, []);
 
-  // Create highlights when meshes change - ONLY BOUNDING BOX, NO EDGE LINES
+  // Cleanup hover highlight
+  const cleanupHoverHighlight = useCallback(() => {
+    if (hoverHighlightRef.current) {
+      if (hoverHighlightRef.current.parent) {
+        hoverHighlightRef.current.parent.remove(hoverHighlightRef.current);
+      }
+      if (hoverHighlightRef.current.geometry) hoverHighlightRef.current.geometry.dispose();
+      if (hoverHighlightRef.current.material) hoverHighlightRef.current.material.dispose();
+      hoverHighlightRef.current = null;
+    }
+    if (hoverOutlineRef.current) {
+      if (hoverOutlineRef.current.parent) {
+        hoverOutlineRef.current.parent.remove(hoverOutlineRef.current);
+      }
+      if (hoverOutlineRef.current.geometry) hoverOutlineRef.current.geometry.dispose();
+      if (hoverOutlineRef.current.material) hoverOutlineRef.current.material.dispose();
+      hoverOutlineRef.current = null;
+    }
+  }, []);
+
+  // Create hover highlight for a mesh
+  const createHoverHighlight = useCallback((mesh) => {
+    cleanupHoverHighlight();
+    
+    if (!mesh || !mesh.geometry) return;
+    
+    try {
+      mesh.updateMatrixWorld(true);
+      
+      // Create highlight overlay
+      const highlightGeometry = mesh.geometry.clone();
+      const highlightMaterial = createHoverMaterial();
+      const highlightMesh = new THREE.Mesh(highlightGeometry, highlightMaterial);
+      highlightMesh.applyMatrix4(mesh.matrixWorld);
+      highlightMesh.renderOrder = 998;
+      threeScene.add(highlightMesh);
+      hoverHighlightRef.current = highlightMesh;
+
+      // Create outline
+      const edges = new THREE.EdgesGeometry(highlightGeometry, 30);
+      const lineMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x00ffff, 
+        transparent: true, 
+        opacity: 0.8,
+        depthTest: false
+      });
+      const outline = new THREE.LineSegments(edges, lineMaterial);
+      outline.applyMatrix4(mesh.matrixWorld);
+      outline.renderOrder = 999;
+      threeScene.add(outline);
+      hoverOutlineRef.current = outline;
+    } catch (error) {
+      console.warn('Error creating hover highlight:', error);
+    }
+  }, [threeScene, cleanupHoverHighlight]);
+
+  // Handle pointer move for hover detection
+  useFrame(() => {
+    if (!scene || !isSelected || !enableMaterialPicking || transformMode !== 'none') {
+      if (hoveredMesh) {
+        setHoveredMesh(null);
+        cleanupHoverHighlight();
+      }
+      return;
+    }
+
+    // Skip if we're dragging or have a material selected with transform active
+    if (isDraggingMaterial.current || (selectedMaterialId && materialTransformMode !== 'none')) {
+      return;
+    }
+
+    // Raycast to find hovered mesh
+    raycaster.setFromCamera(pointer, camera);
+    
+    const meshes = [];
+    scene.traverse((child) => {
+      if (child.isMesh && child.visible) {
+        meshes.push(child);
+      }
+    });
+
+    const intersects = raycaster.intersectObjects(meshes, false);
+    
+    if (intersects.length > 0) {
+      const hitMesh = intersects[0].object;
+      if (hitMesh !== hoveredMesh) {
+        setHoveredMesh(hitMesh);
+        createHoverHighlight(hitMesh);
+        gl.domElement.style.cursor = 'pointer';
+      }
+    } else {
+      if (hoveredMesh) {
+        setHoveredMesh(null);
+        cleanupHoverHighlight();
+        gl.domElement.style.cursor = 'auto';
+      }
+    }
+  });
+
+  // Cleanup hover on unmount or when not selected
+  useEffect(() => {
+    if (!isSelected) {
+      cleanupHoverHighlight();
+      setHoveredMesh(null);
+      gl.domElement.style.cursor = 'auto';
+    }
+    return () => {
+      cleanupHoverHighlight();
+      gl.domElement.style.cursor = 'auto';
+    };
+  }, [isSelected, cleanupHoverHighlight, gl.domElement.style]);
+
+  // Create highlights when meshes change
   useEffect(() => {
     const meshKey = highlightedMeshes
       .map(h => h?.mesh?.uuid)
@@ -171,7 +300,7 @@ function Model({
 
     const combinedBox = new THREE.Box3();
     
-    // Calculate combined bounding box (no edge lines)
+    // Calculate combined bounding box
     validMeshes.forEach(({ mesh }) => {
       try {
         mesh.updateMatrixWorld(true);
@@ -402,7 +531,6 @@ function Model({
   // Material transform drag handler
   const handleMaterialDraggingChanged = useCallback((event) => {
     if (event.value) {
-      // Starting drag - capture state for undo
       const state = captureMaterialState();
       if (state && onTransformStart) {
         onTransformStart(state);
@@ -424,7 +552,6 @@ function Model({
 
     const handleDraggingChanged = (event) => {
       if (event.value) {
-        // Starting drag - capture state for undo
         const state = captureTransformState();
         if (state && onTransformStart) {
           onTransformStart(state);
@@ -450,18 +577,46 @@ function Model({
     return () => controls.removeEventListener('dragging-changed', handleMaterialDraggingChanged);
   }, [handleMaterialDraggingChanged]);
 
-  // Click to select
+  // Click handler - both model selection and mesh/material selection
   const handleClick = (e) => {
     e.stopPropagation();
+    
+    // First ensure model is selected
     onSelect?.();
+    
+    // If material picking is enabled and we have a hovered mesh, select its material
+    if (enableMaterialPicking && hoveredMesh && isSelected && transformMode === 'none') {
+      const mesh = hoveredMesh;
+      if (mesh.material) {
+        const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        if (material && onMeshClick) {
+          onMeshClick({
+            mesh: mesh,
+            material: material,
+            materialUuid: material.uuid,
+            modelId: modelId
+          });
+        }
+      }
+    }
+  };
+
+  // Pointer down for immediate feedback
+  const handlePointerDown = (e) => {
+    if (e.button !== 0) return; // Only left click
+    
+    if (!isSelected) {
+      onSelect?.();
+    }
   };
 
   // Cleanup
   useEffect(() => {
     return () => {
       cleanupHighlights();
+      cleanupHoverHighlight();
     };
-  }, [cleanupHighlights]);
+  }, [cleanupHighlights, cleanupHoverHighlight]);
 
   if (!scene) return null;
 
@@ -472,7 +627,11 @@ function Model({
                                  isSelected;
 
   return (
-    <group ref={groupRef} onClick={handleClick}>
+    <group 
+      ref={groupRef} 
+      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+    >
       {/* Selection ring for model */}
       {isSelected && (
         <mesh position={modelCenter} rotation={[-Math.PI / 2, 0, 0]} renderOrder={100}>
